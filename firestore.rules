@@ -1,0 +1,35 @@
+rules_version = '2';
+// Después de editar: desplegar con: firebase deploy --only firestore:rules
+// Etapa 4: user solo lee lo suyo; admin lee/escribe todo.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null
+        && get(/databases/$(database)/documents/user/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Usuarios: cada uno lee su doc; solo admin escribe
+    match /user/{userId} {
+      allow read: if request.auth != null
+        && (request.auth.uid == userId || isAdmin());
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Casas: admin todo; user solo lee las que tienen su userId
+    match /houses/{houseId} {
+      allow read: if request.auth != null
+        && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Lecturas: admin todo; user lee las de sus casas (con o sin userId en la lectura)
+    match /readings/{readingId} {
+      allow read: if request.auth != null
+        && (isAdmin()
+            || resource.data.userId == request.auth.uid
+            || (resource.data.houseId != null
+                && get(/databases/$(database)/documents/houses/$(resource.data.houseId)).data.userId == request.auth.uid));
+      allow create, update, delete: if isAdmin();
+    }
+  }
+}

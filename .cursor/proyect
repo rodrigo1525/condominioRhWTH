@@ -1,0 +1,87 @@
+Esto alcanza para un MVP funcional con:
+•	Roles (Admin/User)
+•	Creación de usuarios (Admin)
+•	Reset password (correo) + link respaldo
+•	CRUD casas (crear/editar, meterNumber)
+•	Lecturas mensuales con foto + OCR (Azure Read vía Function)
+•	Usuario ve histórico y foto
+
+Etapa 1 (Días 1–10)
+Objetivo: Base del proyecto + autenticación + roles + esqueleto UI
+Trabajo:
+•	Setup Expo + navegación (stacks por rol)
+•	Firebase Auth (login/logout)
+•	Estructura Firestore básica: users, houses, readings
+•	Guard “role-based navigation” (pantallas Admin vs User)
+•	Pantallas base (placeholders): 
+o	Login
+o	AdminHome
+o	UserHome
+✅ Entregable #1 (fin día 10):
+App navegable con login y separación por rol (Admin/User) + estructura inicial de Firebase conectada.
+
+
+
+
+
+
+Etapa 2 (Días 10–15)
+Objetivo: Admin crea usuarios y gestiona casas (crear/editar meterNumber) + reset principal y respaldo
+Trabajo:
+•	Cloud Function createUserAsAdmin (crear usuario en Auth + documento users/{uid})
+•	Pantalla Admin: Crear Usuario
+•	Envío principal: botón Enviar correo reset (sendPasswordResetEmail)
+•	Cloud Function respaldo: generateResetLinkAsAdmin (retorna link)
+•	Pantalla Admin: listado/selección de usuarios (simple)
+•	CRUD casas: 
+o	crear casa
+o	editar casa (incluye meterNumber)
+✅ Entregable #2 (fin día 15):
+Admin puede crear usuarios y enviar reset por correo, con link de respaldo para copiar/compartir. Admin puede crear/editar casas (incl. meterNumber).
+
+
+
+
+
+
+
+
+
+
+
+Quincena 3 (Días 15-20) — En curso / implementado
+Objetivo: Captura de lectura con foto + subir a Storage + OCR (Azure Read) + guardado en Firestore
+Trabajo:
+•	Integrar cámara (captura foto) — expo-image-picker (Cámara + Galería)
+•	Compresión básica (si aplica) — quality 0.8 en picker
+•	Subida a Firebase Storage + getDownloadURL — lib/firebase.ts storage + reading-new.tsx
+•	Cloud Function ocrReadFromUrl (Azure Read: POST + polling GET) — functions/src/index.ts
+•	UI Admin: mostrar lectura detectada + campo manual fallback — app/(admin)/reading-new.tsx
+•	Guardado de reading en Firestore con: lectura, previousValue, consumo, photoUrl, ocrRaw
+✅ Entregable #3 (fin día 20):
+Admin puede registrar lecturas mensuales: toma foto, sube, OCR sugiere lectura, admin confirma/edita, se guarda en Firestore con foto.
+Configuración: AZURE_OCR_ENDPOINT y AZURE_OCR_KEY en functions (ver functions/.env.example).
+
+
+
+
+
+
+
+
+
+Etapa 4 (Días 20-30) — Implementado
+Objetivo: Vista Usuario (histórico + foto) + QA/ajustes + “release candidate”
+Trabajo:
+•	User: listar casas
+•	User: ver histórico mes a mes
+•	User: ver foto del mes (abrir photoUrl)
+•	Ajustes de validación y UX (mensajes, spinners, errores)
+•	Reglas de Firestore (mínimas) para: 
+o	user lee solo lo suyo
+o	admin escribe/lee
+•	QA con datos reales (al menos 5–10 lecturas)
+•	Preparación de build Android
+✅ Entregable #4 (fin día 30):
+MVP completo funcional en Android: Admin gestiona usuarios/casas, captura lecturas con OCR y fotos; Usuario ve consumo histórico y fotos. Build candidata para prueba/piloto.
+

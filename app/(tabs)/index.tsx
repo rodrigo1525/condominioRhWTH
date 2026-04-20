@@ -1,13 +1,28 @@
+import { useAuth } from '@/context/auth-context';
 import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { Platform, Pressable, StyleSheet } from 'react-native';
 
 import { HelloWave } from '@/components/hello-wave';
 import ParallaxScrollView from '@/components/parallax-scroll-view';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+import { Colors } from '@/constants/theme';
+import { Link, router } from 'expo-router';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 
 export default function HomeScreen() {
+  const { logout, isLoggingOut } = useAuth();
+  const colorScheme = useColorScheme();
+  const tintColor = Colors[colorScheme ?? 'light'].tint;
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      router.replace('/(auth)');
+    } catch {
+      // Error manejado en context
+    }
+  };
   return (
     <ParallaxScrollView
       headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
@@ -18,8 +33,30 @@ export default function HomeScreen() {
         />
       }>
       <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
+        <ThemedView style={styles.welcomeRow}>
+          <ThemedText type="title">Welcome!</ThemedText>
+          <HelloWave />
+        </ThemedView>
+        <Pressable
+          onPress={handleLogout}
+          disabled={isLoggingOut}
+          style={({ pressed }) => [
+            styles.logoutButton,
+            {
+              backgroundColor: tintColor,
+              opacity: isLoggingOut ? 0.7 : pressed ? 0.8 : 1,
+            },
+          ]}
+        >
+          <ThemedText
+            style={[
+              styles.logoutText,
+              { color: colorScheme === 'dark' ? '#111' : '#fff' },
+            ]}
+          >
+            {isLoggingOut ? 'Cerrando sesión...' : 'Cerrar sesión'}
+          </ThemedText>
+        </Pressable>
       </ThemedView>
       <ThemedView style={styles.stepContainer}>
         <ThemedText type="subtitle">Step 1: Try it</ThemedText>
@@ -80,9 +117,22 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   titleContainer: {
+    gap: 8,
+  },
+  welcomeRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  logoutButton: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  logoutText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   stepContainer: {
     gap: 8,

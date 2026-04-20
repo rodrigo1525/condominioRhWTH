@@ -1,0 +1,2 @@
+El proyecto utilizará Firebase Auth, Firestore y Azure Read OCR.
+Para gestos y feedback táctil: usar react-native-gesture-handler + react-native-reanimated; botones con animación de escala mediante el componente GesturePressable (components/ui/gesture-pressable.tsx). La app está envuelta en GestureHandlerRootView en app/_layout.tsx.
