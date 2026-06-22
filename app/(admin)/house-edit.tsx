@@ -35,6 +35,7 @@ export default function HouseEditScreen() {
 
   const [address, setAddress] = useState('');
   const [meterNumber, setMeterNumber] = useState('');
+  const [email, setEmail] = useState('');
   const [assignedUserId, setAssignedUserId] = useState<string | null>(null);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [userOptions, setUserOptions] = useState<UserOption[]>([]);
@@ -77,6 +78,7 @@ export default function HouseEditScreen() {
           const d = snap.data();
           setAddress(d.address ?? '');
           setMeterNumber(d.meterNumber ?? '');
+          setEmail(d.email ?? '');
           setAssignedUserId(d.userId ?? null);
         }
       } catch (err) {
@@ -92,8 +94,13 @@ export default function HouseEditScreen() {
 
   const handleSave = async () => {
     const trimmedAddress = address.trim();
+    const trimmedEmail = email.trim();
     if (!trimmedAddress) {
       setError('La dirección es obligatoria.');
+      return;
+    }
+    if (trimmedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setError('El correo no tiene un formato válido.');
       return;
     }
     setError(null);
@@ -102,6 +109,7 @@ export default function HouseEditScreen() {
       const data = {
         address: trimmedAddress,
         meterNumber: meterNumber.trim(),
+        email: trimmedEmail || null,
         userId: assignedUserId || null,
       };
       if (isEdit) {
@@ -173,6 +181,20 @@ export default function HouseEditScreen() {
           placeholderTextColor={isDark ? '#888' : '#666'}
           value={meterNumber}
           onChangeText={setMeterNumber}
+          editable={!saving}
+        />
+
+        <TextInput
+          style={[
+            styles.input,
+            { backgroundColor: isDark ? '#2a2a2a' : '#f0f0f0', color: isDark ? '#fff' : '#111' },
+          ]}
+          placeholder="Correo electrónico (opcional)"
+          placeholderTextColor={isDark ? '#888' : '#666'}
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
           editable={!saving}
         />
 

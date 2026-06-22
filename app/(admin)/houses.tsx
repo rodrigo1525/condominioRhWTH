@@ -20,6 +20,7 @@ interface HouseItem {
   id: string;
   address: string;
   meterNumber: string;
+  email?: string | null;
 }
 
 export default function HousesScreen() {
@@ -39,6 +40,7 @@ export default function HousesScreen() {
           id: d.id,
           address: data.address ?? '',
           meterNumber: data.meterNumber ?? '',
+          email: data.email ?? null,
         };
       });
       setHouses(list.sort((a, b) => a.address.localeCompare(b.address)));
@@ -62,6 +64,9 @@ export default function HousesScreen() {
       >
         <ThemedText style={styles.address}>{item.address || '(Sin dirección)'}</ThemedText>
         <ThemedText style={styles.meter}>Medidor: {item.meterNumber || '—'}</ThemedText>
+        {item.email ? (
+          <ThemedText style={styles.meter}>Correo: {item.email}</ThemedText>
+        ) : null}
       </GesturePressable>
       <View style={styles.rowActions}>
         <GesturePressable
@@ -95,7 +100,9 @@ export default function HousesScreen() {
       <ThemedText type="title" style={styles.title}>
         Casas
       </ThemedText>
-      <ThemedText style={styles.subtitle}>Crear o editar casas (dirección y número de medidor).</ThemedText>
+      <ThemedText style={styles.subtitle}>
+        Crear o editar casas (dirección, medidor y correo opcional).
+      </ThemedText>
 
       <FlatList
         data={houses}

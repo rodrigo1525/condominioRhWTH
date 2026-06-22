@@ -1,11 +1,16 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
 import { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
+    Alert,
     Image,
+    KeyboardAvoidingView,
+    Platform,
     ScrollView,
     StyleSheet,
+    TextInput,
     useColorScheme,
     View,
 } from 'react-native';
@@ -16,7 +21,28 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { GesturePressable } from '@/components/ui/gesture-pressable';
 import { Colors } from '@/constants/theme';
-import { db } from '@/lib/firebase';
+import { db, functions } from '@/lib/firebase';
+
+function getSendEmailErrorMessage(err: unknown): string {
+  if (err && typeof err === 'object' && 'code' in err) {
+    const code = String((err as { code: string }).code);
+    const message =
+      typeof (err as { message?: string }).message === 'string'
+        ? (err as { message: string }).message
+        : '';
+    if (code === 'functions/not-found' || message.toLowerCase().includes('not found')) {
+      return (
+        'La función sendReadingByEmail no está desplegada. En la raíz del proyecto ejecuta ' +
+        '"firebase deploy --only functions".'
+      );
+    }
+    if (code === 'functions/failed-precondition') {
+      return message || 'Correo no configurado en Firebase Functions (SMTP_HOST, SMTP_USER, SMTP_PASS).';
+    }
+    if (message) return message;
+  }
+  return err instanceof Error ? err.message : 'Error al enviar el correo.';
+}
 
 /** Dado un periodo YYYY-MM devuelve el anterior (ej: 2025-01 → 2024-12). */
 function prevPeriod(period: string): string {
@@ -47,6 +73,9 @@ export default function ReadingDetailScreen() {
   const [prevPhotoUrl, setPrevPhotoUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [emailToSend, setEmailToSend] = useState('');
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [emailError, setEmailError] = useState<string | null>(null);
 
   const colorScheme = useColorScheme();
   const tintColor = Colors[colorScheme ?? 'light'].tint;
@@ -81,6 +110,7 @@ export default function ReadingDetailScreen() {
       setHouseLabel(
         houseData?.address ?? houseData?.meterNumber ?? houseId ?? '—'
       );
+      setEmailToSend(typeof houseData?.email === 'string' ? houseData.email.trim() : '');
 
       const prevP = prevPeriod(p);
       const prevQuery = query(
@@ -107,6 +137,49 @@ export default function ReadingDetailScreen() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const handleSendEmail = useCallback(async () => {
+    const toEmail = emailToSend.trim();
+    if (!toEmail) {
+      setEmailError('Indica el correo de destino.');
+      return;
+    }
+    if (!photoUrl) {
+      setEmailError('Esta lectura no tiene foto para enviar por correo.');
+      return;
+    }
+    setEmailError(null);
+    setSendingEmail(true);
+    try {
+      const sendFn = httpsCallable<
+        {
+          toEmail: string;
+          photoUrl: string;
+          casaNo: string;
+          mes: string;
+          lecturaMesAnterior: string | number;
+          lecturaMesRegistrado: string | number;
+          consumo: string | number | null;
+        },
+        { success: boolean; message?: string }
+      >(functions, 'sendReadingByEmail');
+      await sendFn({
+        toEmail,
+        photoUrl,
+        casaNo: houseLabel || '—',
+        mes: period ? formatPeriod(period) : '—',
+        lecturaMesAnterior: previousValue != null ? previousValue : '—',
+        lecturaMesRegistrado: value != null ? value : '—',
+        consumo: consumption,
+      });
+      setEmailError(null);
+      Alert.alert('Enviado', 'Correo enviado correctamente.');
+    } catch (err: unknown) {
+      setEmailError(getSendEmailErrorMessage(err));
+    } finally {
+      setSendingEmail(false);
+    }
+  }, [emailToSend, photoUrl, houseLabel, period, previousValue, value, consumption]);
 
   if (loading) {
     return (
@@ -135,6 +208,7 @@ export default function ReadingDetailScreen() {
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <ScrollView
         contentContainerStyle={[styles.scrollContent, { paddingBottom: 24 + insets.bottom }]}
+        keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
         <ThemedText type="title" style={styles.title}>
@@ -205,6 +279,46 @@ export default function ReadingDetailScreen() {
             )}
           </View>
         </View>
+
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <ThemedText style={styles.sectionLabel}>Enviar resumen por correo</ThemedText>
+          <TextInput
+            style={[
+              styles.input,
+              { backgroundColor: isDark ? '#2a2a2a' : '#f0f0f0', color: isDark ? '#fff' : '#111' },
+            ]}
+            placeholder="correo@ejemplo.com"
+            placeholderTextColor={isDark ? '#888' : '#666'}
+            value={emailToSend}
+            onChangeText={setEmailToSend}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            editable={!sendingEmail}
+          />
+          <GesturePressable
+            style={[styles.secondaryButton, { borderColor: tintColor }]}
+            onPress={handleSendEmail}
+            disabled={sendingEmail || !photoUrl}
+          >
+            {sendingEmail ? (
+              <ActivityIndicator size="small" color={tintColor} />
+            ) : (
+              <ThemedText style={[styles.secondaryButtonText, { color: tintColor }]}>
+                Enviar por correo (foto + tabla)
+              </ThemedText>
+            )}
+          </GesturePressable>
+          {!photoUrl ? (
+            <ThemedText style={styles.emailHint}>
+              Esta lectura no tiene foto; no se puede enviar por correo.
+            </ThemedText>
+          ) : null}
+          {emailError ? (
+            <View style={styles.errorBox}>
+              <ThemedText style={styles.errorText}>{emailError}</ThemedText>
+            </View>
+          ) : null}
+        </KeyboardAvoidingView>
 
         <View style={styles.actions}>
           <GesturePressable
@@ -321,8 +435,40 @@ const styles = StyleSheet.create({
     fontSize: 12,
     opacity: 0.6,
   },
+  input: {
+    height: 48,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    fontSize: 16,
+  },
+  secondaryButton: {
+    height: 48,
+    paddingHorizontal: 15,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 12,
+    borderWidth: 2,
+  },
+  secondaryButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  emailHint: {
+    fontSize: 13,
+    opacity: 0.7,
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  errorBox: {
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: 'rgba(220, 53, 69, 0.15)',
+    marginTop: 12,
+  },
   actions: {
     gap: 12,
+    marginTop: 24,
   },
   primaryButton: {
     height: 48,

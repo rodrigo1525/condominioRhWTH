@@ -31,7 +31,29 @@ interface HouseItem {
   id: string;
   address: string;
   meterNumber: string;
+  email?: string | null;
   userId?: string | null;
+}
+
+function getSendEmailErrorMessage(err: unknown): string {
+  if (err && typeof err === 'object' && 'code' in err) {
+    const code = String((err as { code: string }).code);
+    const message =
+      typeof (err as { message?: string }).message === 'string'
+        ? (err as unknown as { message: string }).message
+        : '';
+    if (code === 'functions/not-found' || message.toLowerCase().includes('not found')) {
+      return (
+        'La función sendReadingByEmail no está desplegada. En la raíz del proyecto ejecuta ' +
+        '"firebase deploy --only functions".'
+      );
+    }
+    if (code === 'functions/failed-precondition') {
+      return message || 'Correo no configurado en Firebase Functions (SMTP_HOST, SMTP_USER, SMTP_PASS).';
+    }
+    if (message) return message;
+  }
+  return err instanceof Error ? err.message : 'Error al enviar el correo.';
 }
 
 /** Extrae un número (entero o decimal) del texto OCR para sugerir como lectura. */
@@ -40,6 +62,21 @@ function parseReadingFromOcr(text: string): string {
   const cleaned = text.replace(/,/g, '.').replace(/\s/g, '');
   const match = cleaned.match(/\d+(\.\d+)?/);
   return match ? match[0] : text.trim().slice(0, 20);
+}
+
+function formatPeriod(period: string): string {
+  const [y, m] = period.split('-');
+  const months = [
+    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+  ];
+  const monthName = months[parseInt(m, 10) - 1] ?? m;
+  return `${monthName} ${y}`;
+}
+
+function currentPeriod(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
 export default function ReadingNewScreen() {
@@ -76,6 +113,7 @@ export default function ReadingNewScreen() {
           id: d.id,
           address: data.address ?? '',
           meterNumber: data.meterNumber ?? '',
+          email: data.email ?? null,
           userId: data.userId ?? null,
         };
       });
@@ -96,6 +134,15 @@ export default function ReadingNewScreen() {
   useEffect(() => {
     loadHouses();
   }, [loadHouses]);
+
+  useEffect(() => {
+    if (!selectedHouseId) {
+      setEmailToSend('');
+      return;
+    }
+    const house = houses.find((h) => h.id === selectedHouseId);
+    setEmailToSend(house?.email?.trim() ?? '');
+  }, [selectedHouseId, houses]);
 
   // Al cambiar de casa, limpiar imagen y lectura actual para que "lectura actual"
   // provenga siempre de la imagen tomada para esta casa (evitar mezclar con casa anterior).
@@ -275,6 +322,7 @@ export default function ReadingNewScreen() {
           toEmail: string;
           photoUrl: string;
           casaNo: string;
+          mes: string;
           lecturaMesAnterior: string | number;
           lecturaMesRegistrado: string | number;
           consumo: string | number | null;
@@ -285,15 +333,16 @@ export default function ReadingNewScreen() {
         toEmail,
         photoUrl,
         casaNo: house?.address || house?.meterNumber || house?.id || '—',
+        mes: formatPeriod(currentPeriod()),
         lecturaMesAnterior: previousValue.trim() === '' ? '—' : previousValue,
         lecturaMesRegistrado: readingValue,
         consumo: consumption != null ? consumption : null,
       });
       setEmailToSend('');
       setError(null);
-      // Opcional: mostrar éxito (podrías usar un toast)
+      Alert.alert('Enviado', 'Correo enviado correctamente.');
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Error al enviar el correo.');
+      setError(getSendEmailErrorMessage(err));
     } finally {
       setSendingEmail(false);
     }
@@ -476,7 +525,7 @@ export default function ReadingNewScreen() {
             </ThemedText>
           )}
 
-          {/*<ThemedText style={styles.label}>Enviar resumen por correo (opcional)</ThemedText>
+          <ThemedText style={styles.label}>Enviar resumen por correo (opcional)</ThemedText>
           <TextInput
             style={[
               styles.input,
@@ -502,7 +551,7 @@ export default function ReadingNewScreen() {
                 Enviar por correo (foto + tabla)
               </ThemedText>
             )}
-          </GesturePressable>*/}
+          </GesturePressable>
 
           {error ? (
             <View style={styles.errorBox}>

@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import * as admin from 'firebase-admin';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import * as nodemailer from 'nodemailer';
 
 admin.initializeApp();
 
@@ -195,5 +196,121 @@ export const ocrReadFromUrl = onCall(
       }
     }
     throw new HttpsError('deadline-exceeded', 'OCR tardó demasiado. Intenta de nuevo.');
+  }
+);
+
+// --- Envío de lectura por correo (foto del contador + tabla de datos) ---
+const SMTP_HOST = process.env.SMTP_HOST ?? '';
+const SMTP_PORT = parseInt(process.env.SMTP_PORT ?? '587', 10);
+const SMTP_USER = process.env.SMTP_USER ?? '';
+const SMTP_PASS = process.env.SMTP_PASS ?? '';
+const SMTP_FROM = process.env.SMTP_FROM ?? process.env.SMTP_USER ?? '';
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * Envía por correo la foto del contador y una tabla con: Casa No., Mes, Lectura mes anterior,
+ * Lectura mes registrado, Consumo. Solo administradores.
+ */
+export const sendReadingByEmail = onCall(
+  { region: 'us-central1' },
+  async (request): Promise<{ success: boolean; message: string }> => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Debes iniciar sesión.');
+    }
+    await assertAdmin(request.auth.uid);
+
+    const { toEmail, photoUrl, casaNo, mes, lecturaMesAnterior, lecturaMesRegistrado, consumo } =
+      request.data as {
+        toEmail?: string;
+        photoUrl?: string;
+        casaNo?: string;
+        mes?: string;
+        lecturaMesAnterior?: string | number;
+        lecturaMesRegistrado?: string | number;
+        consumo?: string | number | null;
+      };
+
+    if (!toEmail || typeof toEmail !== 'string' || !toEmail.trim()) {
+      throw new HttpsError('invalid-argument', 'El correo de destino es obligatorio.');
+    }
+    const trimmedTo = toEmail.trim();
+    if (!photoUrl || typeof photoUrl !== 'string' || !photoUrl.trim()) {
+      throw new HttpsError('invalid-argument', 'La URL de la foto es obligatoria.');
+    }
+    if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Correo no configurado. Define SMTP_HOST, SMTP_USER y SMTP_PASS en la configuración de la función.'
+      );
+    }
+
+    const prevStr = lecturaMesAnterior != null ? String(lecturaMesAnterior) : '—';
+    const currStr = lecturaMesRegistrado != null ? String(lecturaMesRegistrado) : '—';
+    const consStr = consumo != null && consumo !== '' ? String(consumo) : '—';
+    const mesStr = mes != null && String(mes).trim() !== '' ? String(mes).trim() : '—';
+    const casaStr = String(casaNo ?? '—');
+    const tableHtml = `
+      <table border="1" cellpadding="10" cellspacing="0" style="border-collapse: collapse; width: 100%; max-width: 600px;">
+        <thead>
+          <tr style="background: #2563eb; color: #fff;">
+            <th>CASA NO.</th>
+            <th>MES</th>
+            <th>LECTURA MES ANTERIOR</th>
+            <th>LECTURA MES REGISTRADO</th>
+            <th>CONSUMO</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>${escapeHtml(casaStr)}</td>
+            <td>${escapeHtml(mesStr)}</td>
+            <td>${escapeHtml(prevStr)}</td>
+            <td>${escapeHtml(currStr)}</td>
+            <td>${escapeHtml(consStr)}</td>
+          </tr>
+        </tbody>
+      </table>`;
+    const html = `
+      <div style="font-family: sans-serif;">
+        <h2>Lectura de contador eléctrico</h2>
+        <p>Se adjunta la fotografía del contador y el resumen de la lectura.</p>
+        <p><img src="${escapeHtml(photoUrl.trim())}" alt="Contador eléctrico" style="max-width: 100%; height: auto;" /></p>
+        <p style="margin-top: 24px;"><strong>Resumen:</strong></p>
+        ${tableHtml}
+      </div>`;
+
+    const transporter = nodemailer.createTransport({
+      host: SMTP_HOST,
+      port: SMTP_PORT,
+      secure: SMTP_PORT === 465,
+      auth: { user: SMTP_USER, pass: SMTP_PASS },
+    });
+    const from = SMTP_FROM ? `Condominio <${SMTP_FROM}>` : SMTP_USER;
+
+    const subjectParts = ['Lectura de contador eléctrico'];
+    if (mesStr !== '—') subjectParts.push(mesStr);
+    if (casaStr !== '—') subjectParts.push(casaStr);
+    const subject = subjectParts.join(' - ');
+
+    try {
+      await transporter.sendMail({
+        from,
+        to: trimmedTo,
+        subject,
+        html,
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new HttpsError('internal', `Error al enviar correo: ${message}`);
+    }
+
+    return { success: true, message: 'Correo enviado correctamente.' };
   }
 );

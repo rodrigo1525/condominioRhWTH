@@ -163,8 +163,15 @@ const SMTP_PORT = parseInt((_d = process.env.SMTP_PORT) !== null && _d !== void 
 const SMTP_USER = (_e = process.env.SMTP_USER) !== null && _e !== void 0 ? _e : '';
 const SMTP_PASS = (_f = process.env.SMTP_PASS) !== null && _f !== void 0 ? _f : '';
 const SMTP_FROM = (_h = (_g = process.env.SMTP_FROM) !== null && _g !== void 0 ? _g : process.env.SMTP_USER) !== null && _h !== void 0 ? _h : '';
+function escapeHtml(text) {
+    return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
 /**
- * Envía por correo la foto del contador y una tabla con: Casa No., Lectura mes anterior,
+ * Envía por correo la foto del contador y una tabla con: Casa No., Mes, Lectura mes anterior,
  * Lectura mes registrado, Consumo. Solo administradores.
  */
 exports.sendReadingByEmail = (0, https_1.onCall)({ region: 'us-central1' }, async (request) => {
@@ -172,7 +179,7 @@ exports.sendReadingByEmail = (0, https_1.onCall)({ region: 'us-central1' }, asyn
         throw new https_1.HttpsError('unauthenticated', 'Debes iniciar sesión.');
     }
     await assertAdmin(request.auth.uid);
-    const { toEmail, photoUrl, casaNo, lecturaMesAnterior, lecturaMesRegistrado, consumo, } = request.data;
+    const { toEmail, photoUrl, casaNo, mes, lecturaMesAnterior, lecturaMesRegistrado, consumo } = request.data;
     if (!toEmail || typeof toEmail !== 'string' || !toEmail.trim()) {
         throw new https_1.HttpsError('invalid-argument', 'El correo de destino es obligatorio.');
     }
@@ -186,11 +193,14 @@ exports.sendReadingByEmail = (0, https_1.onCall)({ region: 'us-central1' }, asyn
     const prevStr = lecturaMesAnterior != null ? String(lecturaMesAnterior) : '—';
     const currStr = lecturaMesRegistrado != null ? String(lecturaMesRegistrado) : '—';
     const consStr = consumo != null && consumo !== '' ? String(consumo) : '—';
+    const mesStr = mes != null && String(mes).trim() !== '' ? String(mes).trim() : '—';
+    const casaStr = String(casaNo !== null && casaNo !== void 0 ? casaNo : '—');
     const tableHtml = `
-      <table border="1" cellpadding="10" cellspacing="0" style="border-collapse: collapse; width: 100%; max-width: 500px;">
+      <table border="1" cellpadding="10" cellspacing="0" style="border-collapse: collapse; width: 100%; max-width: 600px;">
         <thead>
           <tr style="background: #2563eb; color: #fff;">
             <th>CASA NO.</th>
+            <th>MES</th>
             <th>LECTURA MES ANTERIOR</th>
             <th>LECTURA MES REGISTRADO</th>
             <th>CONSUMO</th>
@@ -198,7 +208,8 @@ exports.sendReadingByEmail = (0, https_1.onCall)({ region: 'us-central1' }, asyn
         </thead>
         <tbody>
           <tr>
-            <td>${escapeHtml(String(casaNo !== null && casaNo !== void 0 ? casaNo : '—'))}</td>
+            <td>${escapeHtml(casaStr)}</td>
+            <td>${escapeHtml(mesStr)}</td>
             <td>${escapeHtml(prevStr)}</td>
             <td>${escapeHtml(currStr)}</td>
             <td>${escapeHtml(consStr)}</td>
@@ -220,19 +231,24 @@ exports.sendReadingByEmail = (0, https_1.onCall)({ region: 'us-central1' }, asyn
         auth: { user: SMTP_USER, pass: SMTP_PASS },
     });
     const from = SMTP_FROM ? `Condominio <${SMTP_FROM}>` : SMTP_USER;
-    await transporter.sendMail({
-        from,
-        to: trimmedTo,
-        subject: 'Lectura de contador eléctrico',
-        html,
-    });
+    const subjectParts = ['Lectura de contador eléctrico'];
+    if (mesStr !== '—')
+        subjectParts.push(mesStr);
+    if (casaStr !== '—')
+        subjectParts.push(casaStr);
+    const subject = subjectParts.join(' - ');
+    try {
+        await transporter.sendMail({
+            from,
+            to: trimmedTo,
+            subject,
+            html,
+        });
+    }
+    catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        throw new https_1.HttpsError('internal', `Error al enviar correo: ${message}`);
+    }
     return { success: true, message: 'Correo enviado correctamente.' };
 });
-function escapeHtml(text) {
-    return text
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-}
 //# sourceMappingURL=index.js.map
