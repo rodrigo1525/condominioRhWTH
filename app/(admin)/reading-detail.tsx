@@ -163,7 +163,7 @@ export default function ReadingDetailScreen() {
         },
         { success: boolean; message?: string }
       >(functions, 'sendReadingByEmail');
-      await sendFn({
+      const { data } = await sendFn({
         toEmail,
         photoUrl,
         casaNo: houseLabel || '—',
@@ -173,7 +173,7 @@ export default function ReadingDetailScreen() {
         consumo: consumption,
       });
       setEmailError(null);
-      Alert.alert('Enviado', 'Correo enviado correctamente.');
+      Alert.alert('Enviado', data.message ?? 'Correo enviado correctamente.');
     } catch (err: unknown) {
       setEmailError(getSendEmailErrorMessage(err));
     } finally {

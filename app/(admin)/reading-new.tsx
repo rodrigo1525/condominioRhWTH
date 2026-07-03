@@ -74,11 +74,6 @@ function formatPeriod(period: string): string {
   return `${monthName} ${y}`;
 }
 
-function currentPeriod(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-}
-
 export default function ReadingNewScreen() {
   const insets = useSafeAreaInsets();
   const { houseId: paramHouseId } = useLocalSearchParams<{ houseId?: string }>();
@@ -96,8 +91,6 @@ export default function ReadingNewScreen() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
-  const [emailToSend, setEmailToSend] = useState('');
-  const [sendingEmail, setSendingEmail] = useState(false);
 
   const colorScheme = useColorScheme();
   const tintColor = Colors[colorScheme ?? 'light'].tint;
@@ -134,15 +127,6 @@ export default function ReadingNewScreen() {
   useEffect(() => {
     loadHouses();
   }, [loadHouses]);
-
-  useEffect(() => {
-    if (!selectedHouseId) {
-      setEmailToSend('');
-      return;
-    }
-    const house = houses.find((h) => h.id === selectedHouseId);
-    setEmailToSend(house?.email?.trim() ?? '');
-  }, [selectedHouseId, houses]);
 
   // Al cambiar de casa, limpiar imagen y lectura actual para que "lectura actual"
   // provenga siempre de la imagen tomada para esta casa (evitar mezclar con casa anterior).
@@ -287,7 +271,39 @@ export default function ReadingNewScreen() {
         createdAt: new Date(),
         createdBy: profile?.uid ?? null,
       });
-      Alert.alert('Éxito', 'Lectura registrada correctamente.', [
+
+      const toEmail = house?.email?.trim();
+      let successMessage = 'Lectura registrada correctamente.';
+      if (toEmail) {
+        try {
+          const sendFn = httpsCallable<
+            {
+              toEmail: string;
+              photoUrl: string;
+              casaNo: string;
+              mes: string;
+              lecturaMesAnterior: string | number;
+              lecturaMesRegistrado: string | number;
+              consumo: string | number | null;
+            },
+            { success: boolean; message?: string }
+          >(functions, 'sendReadingByEmail');
+          const { data } = await sendFn({
+            toEmail,
+            photoUrl,
+            casaNo: house?.address || house?.meterNumber || house?.id || '—',
+            mes: formatPeriod(period),
+            lecturaMesAnterior: previousValue.trim() === '' ? '—' : previousValue,
+            lecturaMesRegistrado: readingValue,
+            consumo: consumption != null ? consumption : null,
+          });
+          successMessage += ` ${data.message ?? 'Se envió el correo al propietario.'}`;
+        } catch (err: unknown) {
+          successMessage += ` No se pudo enviar el correo: ${getSendEmailErrorMessage(err)}`;
+        }
+      }
+
+      Alert.alert('Éxito', successMessage, [
         { text: 'OK', onPress: () => router.back() },
       ]);
     } catch (err: unknown) {
@@ -296,57 +312,6 @@ export default function ReadingNewScreen() {
       setSaving(false);
     }
   }, [selectedHouseId, houses, readingValue, previousValue, photoUrl, ocrText, profile?.uid]);
-
-  const handleSendEmail = useCallback(async () => {
-    const house = houses.find((h) => h.id === selectedHouseId);
-    const toEmail = emailToSend.trim();
-    if (!toEmail) {
-      setError('Indica el correo de destino.');
-      return;
-    }
-    if (!photoUrl) {
-      setError('Sube una foto y ejecuta OCR antes de enviar por correo.');
-      return;
-    }
-    const prevNum = previousValue.trim() === '' ? null : parseFloat(previousValue.replace(',', '.'));
-    const valueNum = parseFloat(readingValue.replace(',', '.'));
-    const consumption =
-      !Number.isNaN(valueNum) && prevNum != null && !Number.isNaN(prevNum)
-        ? valueNum - prevNum
-        : null;
-    setError(null);
-    setSendingEmail(true);
-    try {
-      const sendFn = httpsCallable<
-        {
-          toEmail: string;
-          photoUrl: string;
-          casaNo: string;
-          mes: string;
-          lecturaMesAnterior: string | number;
-          lecturaMesRegistrado: string | number;
-          consumo: string | number | null;
-        },
-        { success: boolean; message?: string }
-      >(functions, 'sendReadingByEmail');
-      await sendFn({
-        toEmail,
-        photoUrl,
-        casaNo: house?.address || house?.meterNumber || house?.id || '—',
-        mes: formatPeriod(currentPeriod()),
-        lecturaMesAnterior: previousValue.trim() === '' ? '—' : previousValue,
-        lecturaMesRegistrado: readingValue,
-        consumo: consumption != null ? consumption : null,
-      });
-      setEmailToSend('');
-      setError(null);
-      Alert.alert('Enviado', 'Correo enviado correctamente.');
-    } catch (err: unknown) {
-      setError(getSendEmailErrorMessage(err));
-    } finally {
-      setSendingEmail(false);
-    }
-  }, [selectedHouseId, houses, emailToSend, photoUrl, previousValue, readingValue]);
 
   const prevNum = previousValue.trim() === '' ? null : parseFloat(previousValue.replace(',', '.'));
   const valueNum = parseFloat(readingValue.replace(',', '.'));
@@ -525,34 +490,6 @@ export default function ReadingNewScreen() {
             </ThemedText>
           )}
 
-          <ThemedText style={styles.label}>Enviar resumen por correo (opcional)</ThemedText>
-          <TextInput
-            style={[
-              styles.input,
-              { backgroundColor: isDark ? '#2a2a2a' : '#f0f0f0', color: isDark ? '#fff' : '#111' },
-            ]}
-            placeholder="correo@ejemplo.com"
-            placeholderTextColor={isDark ? '#888' : '#666'}
-            value={emailToSend}
-            onChangeText={setEmailToSend}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            editable={!sendingEmail}
-          />
-          <GesturePressable
-            style={[styles.secondaryButton, { borderColor: tintColor }]}
-            onPress={handleSendEmail}
-            disabled={sendingEmail || !photoUrl}
-          >
-            {sendingEmail ? (
-              <ActivityIndicator size="small" color={tintColor} />
-            ) : (
-              <ThemedText style={[styles.secondaryButtonText, { color: tintColor }]}>
-                Enviar por correo (foto + tabla)
-              </ThemedText>
-            )}
-          </GesturePressable>
-
           {error ? (
             <View style={styles.errorBox}>
               <ThemedText style={styles.errorText}>{error}</ThemedText>
@@ -730,19 +667,6 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   primaryButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  secondaryButton: {
-    height: 48,
-    paddingHorizontal: 15,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 12,
-    borderWidth: 2,
-  },
-  secondaryButtonText: {
     fontSize: 16,
     fontWeight: '600',
   },

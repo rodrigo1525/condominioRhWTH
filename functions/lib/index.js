@@ -170,6 +170,27 @@ function escapeHtml(text) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;');
 }
+async function getAuthenticatedUserEmail(uid, tokenEmail) {
+    var _a, _b;
+    if (tokenEmail && typeof tokenEmail === 'string' && tokenEmail.trim()) {
+        return tokenEmail.trim();
+    }
+    try {
+        const userRecord = await auth.getUser(uid);
+        if ((_a = userRecord.email) === null || _a === void 0 ? void 0 : _a.trim()) {
+            return userRecord.email.trim();
+        }
+    }
+    catch (_c) {
+        // Fallback to Firestore profile below.
+    }
+    const snap = await db.doc(`user/${uid}`).get();
+    const email = (_b = snap.data()) === null || _b === void 0 ? void 0 : _b.email;
+    if (typeof email === 'string' && email.trim()) {
+        return email.trim();
+    }
+    return null;
+}
 /**
  * Envía por correo la foto del contador y una tabla con: Casa No., Mes, Lectura mes anterior,
  * Lectura mes registrado, Consumo. Solo administradores.
@@ -237,18 +258,21 @@ exports.sendReadingByEmail = (0, https_1.onCall)({ region: 'us-central1' }, asyn
     if (casaStr !== '—')
         subjectParts.push(casaStr);
     const subject = subjectParts.join(' - ');
+    const adminEmail = await getAuthenticatedUserEmail(request.auth.uid, request.auth.token.email);
+    const bccAdmin = adminEmail != null && adminEmail.toLowerCase() !== trimmedTo.toLowerCase()
+        ? adminEmail
+        : undefined;
     try {
-        await transporter.sendMail({
-            from,
-            to: trimmedTo,
-            subject,
-            html,
-        });
+        await transporter.sendMail(Object.assign(Object.assign({ from, to: trimmedTo }, (bccAdmin ? { bcc: bccAdmin } : {})), { subject,
+            html }));
     }
     catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         throw new https_1.HttpsError('internal', `Error al enviar correo: ${message}`);
     }
-    return { success: true, message: 'Correo enviado correctamente.' };
+    const successMessage = bccAdmin
+        ? 'Correo enviado al propietario. Copia enviada al administrador.'
+        : 'Correo enviado correctamente.';
+    return { success: true, message: successMessage };
 });
 //# sourceMappingURL=index.js.map

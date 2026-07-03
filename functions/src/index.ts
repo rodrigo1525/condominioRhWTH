@@ -214,6 +214,29 @@ function escapeHtml(text: string): string {
     .replace(/"/g, '&quot;');
 }
 
+async function getAuthenticatedUserEmail(
+  uid: string,
+  tokenEmail?: string
+): Promise<string | null> {
+  if (tokenEmail && typeof tokenEmail === 'string' && tokenEmail.trim()) {
+    return tokenEmail.trim();
+  }
+  try {
+    const userRecord = await auth.getUser(uid);
+    if (userRecord.email?.trim()) {
+      return userRecord.email.trim();
+    }
+  } catch {
+    // Fallback to Firestore profile below.
+  }
+  const snap = await db.doc(`user/${uid}`).get();
+  const email = snap.data()?.email;
+  if (typeof email === 'string' && email.trim()) {
+    return email.trim();
+  }
+  return null;
+}
+
 /**
  * Envía por correo la foto del contador y una tabla con: Casa No., Mes, Lectura mes anterior,
  * Lectura mes registrado, Consumo. Solo administradores.
@@ -299,10 +322,20 @@ export const sendReadingByEmail = onCall(
     if (casaStr !== '—') subjectParts.push(casaStr);
     const subject = subjectParts.join(' - ');
 
+    const adminEmail = await getAuthenticatedUserEmail(
+      request.auth.uid,
+      request.auth.token.email
+    );
+    const bccAdmin =
+      adminEmail != null && adminEmail.toLowerCase() !== trimmedTo.toLowerCase()
+        ? adminEmail
+        : undefined;
+
     try {
       await transporter.sendMail({
         from,
         to: trimmedTo,
+        ...(bccAdmin ? { bcc: bccAdmin } : {}),
         subject,
         html,
       });
@@ -311,6 +344,10 @@ export const sendReadingByEmail = onCall(
       throw new HttpsError('internal', `Error al enviar correo: ${message}`);
     }
 
-    return { success: true, message: 'Correo enviado correctamente.' };
+    const successMessage = bccAdmin
+      ? 'Correo enviado al propietario. Copia enviada al administrador.'
+      : 'Correo enviado correctamente.';
+
+    return { success: true, message: successMessage };
   }
 );
