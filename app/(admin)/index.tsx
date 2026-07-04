@@ -1,5 +1,5 @@
 import { useAuth } from '@/context/auth-context';
-import { router } from 'expo-router';
+import { router, type Href } from 'expo-router';
 import { ActivityIndicator, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -56,6 +56,18 @@ export default function AdminHomeScreen() {
         onPress={() => router.push('/(admin)/reading-new')}
       >
         <ThemedText style={[styles.menuButtonText, { color: tintColor }]}>Registrar lectura</ThemedText>
+      </GesturePressable>
+      <GesturePressable
+        style={[styles.menuButton, { borderColor: tintColor }]}
+        onPress={() => router.push('/(admin)/historico')}
+      >
+        <ThemedText style={[styles.menuButtonText, { color: tintColor }]}>Histórico</ThemedText>
+      </GesturePressable>
+      <GesturePressable
+        style={[styles.menuButton, { borderColor: tintColor }]}
+        onPress={() => router.push('/(admin)/variables' as Href)}
+      >
+        <ThemedText style={[styles.menuButtonText, { color: tintColor }]}>Variables</ThemedText>
       </GesturePressable>
       {error ? (
         <ThemedText style={styles.errorText}>{error}</ThemedText>

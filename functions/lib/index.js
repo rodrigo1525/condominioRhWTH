@@ -1,7 +1,7 @@
 "use strict";
 var _a, _b, _c, _d, _e, _f, _g, _h;
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendReadingByEmail = exports.ocrReadFromUrl = exports.generateResetLinkAsAdmin = exports.createUserAsAdmin = void 0;
+exports.sendHistoricoByEmail = exports.sendReadingByEmail = exports.ocrReadFromUrl = exports.generateResetLinkAsAdmin = exports.createUserAsAdmin = void 0;
 require("dotenv/config");
 const admin = require("firebase-admin");
 const https_1 = require("firebase-functions/v2/https");
@@ -274,5 +274,92 @@ exports.sendReadingByEmail = (0, https_1.onCall)({ region: 'us-central1' }, asyn
         ? 'Correo enviado al propietario. Copia enviada al administrador.'
         : 'Correo enviado correctamente.';
     return { success: true, message: successMessage };
+});
+function buildHistoricoTableHtml(rows) {
+    const bodyRows = rows
+        .map((row) => {
+        var _a;
+        const prevStr = row.lecturaMesAnterior != null ? String(row.lecturaMesAnterior) : '—';
+        const currStr = row.lecturaMesRegistrado != null ? String(row.lecturaMesRegistrado) : '—';
+        const consStr = row.consumo != null && row.consumo !== '' ? String(row.consumo) : '—';
+        const mesStr = row.mes != null && String(row.mes).trim() !== '' ? String(row.mes).trim() : '—';
+        const casaStr = String((_a = row.casaNo) !== null && _a !== void 0 ? _a : '—');
+        return `
+          <tr>
+            <td>${escapeHtml(casaStr)}</td>
+            <td>${escapeHtml(mesStr)}</td>
+            <td>${escapeHtml(prevStr)}</td>
+            <td>${escapeHtml(currStr)}</td>
+            <td>${escapeHtml(consStr)}</td>
+          </tr>`;
+    })
+        .join('');
+    return `
+      <table border="1" cellpadding="10" cellspacing="0" style="border-collapse: collapse; width: 100%; max-width: 900px;">
+        <thead>
+          <tr style="background: #2563eb; color: #fff;">
+            <th>CASA NO.</th>
+            <th>MES</th>
+            <th>LECTURA MES ANTERIOR</th>
+            <th>LECTURA MES REGISTRADO</th>
+            <th>CONSUMO</th>
+          </tr>
+        </thead>
+        <tbody>${bodyRows}
+        </tbody>
+      </table>`;
+}
+/**
+ * Envía un único correo con el histórico del período: tabla con todas las casas.
+ * Solo administradores. Destinatario: correo del administrador autenticado.
+ */
+exports.sendHistoricoByEmail = (0, https_1.onCall)({ region: 'us-central1' }, async (request) => {
+    if (!request.auth) {
+        throw new https_1.HttpsError('unauthenticated', 'Debes iniciar sesión.');
+    }
+    await assertAdmin(request.auth.uid);
+    const { mes, rows } = request.data;
+    if (!rows || !Array.isArray(rows) || rows.length === 0) {
+        throw new https_1.HttpsError('invalid-argument', 'No hay lecturas para incluir en el histórico.');
+    }
+    if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
+        throw new https_1.HttpsError('failed-precondition', 'Correo no configurado. Define SMTP_HOST, SMTP_USER y SMTP_PASS en la configuración de la función.');
+    }
+    const adminEmail = await getAuthenticatedUserEmail(request.auth.uid, request.auth.token.email);
+    if (!adminEmail) {
+        throw new https_1.HttpsError('failed-precondition', 'No se encontró un correo para el administrador autenticado.');
+    }
+    const mesStr = mes != null && String(mes).trim() !== '' ? String(mes).trim() : '—';
+    const tableHtml = buildHistoricoTableHtml(rows);
+    const html = `
+      <div style="font-family: sans-serif;">
+        <h2>Histórico de lecturas</h2>
+        <p>Resumen de lecturas del período <strong>${escapeHtml(mesStr)}</strong>.</p>
+        ${tableHtml}
+      </div>`;
+    const transporter = nodemailer.createTransport({
+        host: SMTP_HOST,
+        port: SMTP_PORT,
+        secure: SMTP_PORT === 465,
+        auth: { user: SMTP_USER, pass: SMTP_PASS },
+    });
+    const from = SMTP_FROM ? `Condominio <${SMTP_FROM}>` : SMTP_USER;
+    const subject = `Histórico de lecturas - ${mesStr}`;
+    try {
+        await transporter.sendMail({
+            from,
+            to: adminEmail,
+            subject,
+            html,
+        });
+    }
+    catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        throw new https_1.HttpsError('internal', `Error al enviar correo: ${message}`);
+    }
+    return {
+        success: true,
+        message: `Correo enviado a ${adminEmail} con ${rows.length} lectura(s).`,
+    };
 });
 //# sourceMappingURL=index.js.map

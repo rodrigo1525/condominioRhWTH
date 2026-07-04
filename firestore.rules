@@ -31,5 +31,11 @@ service cloud.firestore {
                 && get(/databases/$(database)/documents/houses/$(resource.data.houseId)).data.userId == request.auth.uid));
       allow create, update, delete: if isAdmin();
     }
+
+    // Variables globales del condominio (documento único config)
+    match /variables/{docId} {
+      allow read: if request.auth != null;
+      allow create, update, delete: if isAdmin();
+    }
   }
 }

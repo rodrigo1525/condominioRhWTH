@@ -25,6 +25,8 @@ export default function AdminLayout() {
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" options={{ title: 'Administrador' }} />
+      <Stack.Screen name="historico" options={{ title: 'Histórico' }} />
+      <Stack.Screen name="variables" options={{ title: 'Variables' }} />
       <Stack.Screen name="house-readings" options={{ title: 'Lecturas' }} />
       <Stack.Screen name="reading-edit" options={{ title: 'Editar lectura' }} />
       <Stack.Screen name="reading-detail" options={{ title: 'Detalle lectura' }} />
