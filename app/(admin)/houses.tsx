@@ -77,6 +77,12 @@ export default function HousesScreen() {
         </GesturePressable>
         <GesturePressable
           style={[styles.rowBtn, { borderColor: tintColor }]}
+          onPress={() => router.push(`/(admin)/house-payments?id=${item.id}` as const)}
+        >
+          <ThemedText style={[styles.rowBtnText, { color: tintColor }]}>Pagos</ThemedText>
+        </GesturePressable>
+        <GesturePressable
+          style={[styles.rowBtn, { borderColor: tintColor }]}
           onPress={() => router.push({ pathname: '/(admin)/house-edit', params: { id: item.id } })}
         >
           <ThemedText style={[styles.rowBtnText, { color: tintColor }]}>Editar</ThemedText>
@@ -172,7 +178,10 @@ const styles = StyleSheet.create({
   },
   rowActions: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
+    maxWidth: 140,
+    justifyContent: 'flex-end',
   },
   rowBtn: {
     paddingHorizontal: 12,

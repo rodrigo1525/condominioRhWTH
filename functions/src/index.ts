@@ -354,45 +354,138 @@ export const sendReadingByEmail = onCall(
 
 interface HistoricoEmailRow {
   casaNo: string;
-  mes: string;
-  lecturaMesAnterior: string | number;
-  lecturaMesRegistrado: string | number;
-  consumo: string | number | null;
+  saldoAnterior?: string | number | null;
+  cuotaAtraso?: string | number | null;
+  otro?: string | number | null;
+  ajusteJD?: string | number | null;
+  cuotaMantenimiento?: string | number | null;
+  lecturaAnterior?: string | number;
+  lecturaRegistrada?: string | number;
+  consumoAguaM3?: string | number | null;
+  cuotaAPagarPorConsumoAgua?: string | number | null;
+  saldoTotalAPagar?: string | number | null;
+  observaciones?: string | number | null;
 }
 
-function buildHistoricoTableHtml(rows: HistoricoEmailRow[]): string {
+function roundReport(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function cellValue(value: string | number | null | undefined, fallback = ''): string {
+  if (value == null || value === '') return fallback;
+  if (typeof value === 'number') return roundReport(value).toFixed(2);
+  return String(value);
+}
+
+function parseReportNumeric(value: string | number | null | undefined): number | null {
+  if (value == null || value === '') return null;
+  if (typeof value === 'number') return roundReport(value);
+  const trimmed = String(value).trim();
+  if (!trimmed || trimmed === '—') return null;
+  const parenMatch = trimmed.match(/^\(([\d.,]+)\)$/);
+  if (parenMatch) {
+    const num = parseFloat(parenMatch[1].replace(',', '.'));
+    return Number.isFinite(num) ? -roundReport(num) : null;
+  }
+  const num = parseFloat(trimmed.replace(',', '.'));
+  return Number.isFinite(num) ? roundReport(num) : null;
+}
+
+function formatReportTotal(value: number): string {
+  if (value < 0) return `(${roundReport(Math.abs(value)).toFixed(2)})`;
+  return roundReport(value).toFixed(2);
+}
+
+function sumReportColumn(
+  rows: HistoricoEmailRow[],
+  getter: (row: HistoricoEmailRow) => string | number | null | undefined
+): string {
+  let sum = 0;
+  let hasAny = false;
+  for (const row of rows) {
+    const parsed = parseReportNumeric(getter(row));
+    if (parsed != null) {
+      sum += parsed;
+      hasAny = true;
+    }
+  }
+  return hasAny ? formatReportTotal(sum) : '';
+}
+
+function buildReporteTableHtml(rows: HistoricoEmailRow[]): string {
   const bodyRows = rows
     .map((row) => {
-      const prevStr = row.lecturaMesAnterior != null ? String(row.lecturaMesAnterior) : '—';
-      const currStr = row.lecturaMesRegistrado != null ? String(row.lecturaMesRegistrado) : '—';
-      const consStr = row.consumo != null && row.consumo !== '' ? String(row.consumo) : '—';
-      const mesStr = row.mes != null && String(row.mes).trim() !== '' ? String(row.mes).trim() : '—';
-      const casaStr = String(row.casaNo ?? '—');
+      const casaStr = cellValue(row.casaNo, '—');
+      const saldoStr = cellValue(row.saldoAnterior, '—');
+      const atrasoStr = cellValue(row.cuotaAtraso, '');
+      const otroStr = cellValue(row.otro, '');
+      const ajusteStr = cellValue(row.ajusteJD, '');
+      const cuotaMantStr = cellValue(row.cuotaMantenimiento, '0.00');
+      const prevStr = cellValue(row.lecturaAnterior, '—');
+      const currStr = cellValue(row.lecturaRegistrada, '—');
+      const consStr = cellValue(row.consumoAguaM3, '—');
+      const cuotaAguaStr = cellValue(row.cuotaAPagarPorConsumoAgua, '0.00');
+      const totalStr = cellValue(row.saldoTotalAPagar, '0.00');
+      const observacionesStr = cellValue(row.observaciones, '');
       return `
           <tr>
             <td>${escapeHtml(casaStr)}</td>
-            <td>${escapeHtml(mesStr)}</td>
+            <td>${escapeHtml(saldoStr)}</td>
+            <td>${escapeHtml(atrasoStr)}</td>
+            <td>${escapeHtml(otroStr)}</td>
+            <td>${escapeHtml(ajusteStr)}</td>
+            <td>${escapeHtml(cuotaMantStr)}</td>
             <td>${escapeHtml(prevStr)}</td>
             <td>${escapeHtml(currStr)}</td>
             <td>${escapeHtml(consStr)}</td>
+            <td>${escapeHtml(cuotaAguaStr)}</td>
+            <td>${escapeHtml(totalStr)}</td>
+            <td>${escapeHtml(observacionesStr)}</td>
           </tr>`;
     })
     .join('');
 
+  const totalsRow = `
+          <tr style="background: #e8eef9; font-weight: bold;">
+            <td>${escapeHtml('TOTAL')}</td>
+            <td>${escapeHtml(sumReportColumn(rows, (r) => r.saldoAnterior))}</td>
+            <td>${escapeHtml(sumReportColumn(rows, (r) => r.cuotaAtraso))}</td>
+            <td>${escapeHtml(sumReportColumn(rows, (r) => r.otro))}</td>
+            <td>${escapeHtml(sumReportColumn(rows, (r) => r.ajusteJD))}</td>
+            <td>${escapeHtml(sumReportColumn(rows, (r) => r.cuotaMantenimiento))}</td>
+            <td>${escapeHtml(sumReportColumn(rows, (r) => r.lecturaAnterior))}</td>
+            <td>${escapeHtml(sumReportColumn(rows, (r) => r.lecturaRegistrada))}</td>
+            <td>${escapeHtml(sumReportColumn(rows, (r) => r.consumoAguaM3))}</td>
+            <td>${escapeHtml(sumReportColumn(rows, (r) => r.cuotaAPagarPorConsumoAgua))}</td>
+            <td>${escapeHtml(sumReportColumn(rows, (r) => r.saldoTotalAPagar))}</td>
+            <td></td>
+          </tr>`;
+
   return `
-      <table border="1" cellpadding="10" cellspacing="0" style="border-collapse: collapse; width: 100%; max-width: 900px;">
+      <table border="1" cellpadding="10" cellspacing="0" style="border-collapse: collapse; width: 100%; max-width: 1200px;">
         <thead>
           <tr style="background: #2563eb; color: #fff;">
             <th>CASA NO.</th>
-            <th>MES</th>
-            <th>LECTURA MES ANTERIOR</th>
-            <th>LECTURA MES REGISTRADO</th>
-            <th>CONSUMO</th>
+            <th>SALDO ANTERIOR</th>
+            <th>CUOTA POR ATRASO EN FECHA DE PAGO</th>
+            <th>OTRO</th>
+            <th>AJUSTE JD</th>
+            <th>CUOTA DE MANTENIMIENTO</th>
+            <th>LECTURA ANTERIOR</th>
+            <th>LECTURA REGISTRADA</th>
+            <th>CONSUMO DE AGUA M3</th>
+            <th>CUOTA A PAGAR POR CONSUMO DE AGUA</th>
+            <th>SALDO TOTAL A PAGAR</th>
+            <th>OBSERVACIONES</th>
           </tr>
         </thead>
-        <tbody>${bodyRows}
+        <tbody>${bodyRows}${totalsRow}
         </tbody>
       </table>`;
+}
+
+function buildHistoricoTableHtml(rows: HistoricoEmailRow[]): string {
+  return buildReporteTableHtml(rows);
 }
 
 /**
@@ -407,9 +500,10 @@ export const sendHistoricoByEmail = onCall(
     }
     await assertAdmin(request.auth.uid);
 
-    const { mes, rows } = request.data as {
+    const { mes, rows, reportType } = request.data as {
       mes?: string;
       rows?: HistoricoEmailRow[];
+      reportType?: 'preliminar' | 'final';
     };
 
     if (!rows || !Array.isArray(rows) || rows.length === 0) {
@@ -434,10 +528,13 @@ export const sendHistoricoByEmail = onCall(
     }
 
     const mesStr = mes != null && String(mes).trim() !== '' ? String(mes).trim() : '—';
+    const tipoReporte = reportType === 'preliminar' ? 'preliminar' : 'final';
     const tableHtml = buildHistoricoTableHtml(rows);
+    const titulo =
+      tipoReporte === 'preliminar' ? 'Reporte preliminar de lecturas' : 'Reporte final de lecturas';
     const html = `
       <div style="font-family: sans-serif;">
-        <h2>Histórico de lecturas</h2>
+        <h2>${escapeHtml(titulo)}</h2>
         <p>Resumen de lecturas del período <strong>${escapeHtml(mesStr)}</strong>.</p>
         ${tableHtml}
       </div>`;

@@ -156,7 +156,7 @@ export default function UsersScreen() {
         Usuarios
       </ThemedText>
       <ThemedText style={styles.subtitle}>
-        Envía reset por correo o copia el link de respaldo.
+        Crear usuarios, enviar reset por correo o copiar el link de respaldo.
       </ThemedText>
 
       <FlatList
@@ -165,12 +165,20 @@ export default function UsersScreen() {
         renderItem={renderItem}
         contentContainerStyle={[styles.list, { paddingBottom: 24 + insets.bottom }]}
         ListEmptyComponent={
-          <ThemedText style={styles.empty}>No hay usuarios en la base de datos.</ThemedText>
+          <ThemedText style={styles.empty}>No hay usuarios. Pulsa "Crear usuario" para agregar uno.</ThemedText>
         }
       />
 
-      <GesturePressable style={[styles.backBtn, { backgroundColor: tintColor, marginBottom: insets.bottom }]} onPress={() => router.back()}>
-        <ThemedText style={[styles.backBtnText, { color: colorScheme === 'dark' ? '#111' : '#fff' }]}>
+      <GesturePressable
+        style={[styles.addButton, { backgroundColor: tintColor }]}
+        onPress={() => router.push('/(admin)/create-user')}
+      >
+        <ThemedText style={[styles.addButtonText, { color: colorScheme === 'dark' ? '#111' : '#fff' }]}>
+          Crear usuario
+        </ThemedText>
+      </GesturePressable>
+      <GesturePressable style={[styles.backBtn, { marginBottom: insets.bottom }]} onPress={() => router.back()}>
+        <ThemedText style={[styles.backBtnText, { color: tintColor }]}>
           Volver al panel
         </ThemedText>
       </GesturePressable>
@@ -247,12 +255,25 @@ const styles = StyleSheet.create({
     opacity: 0.7,
     marginTop: 24,
   },
+  addButton: {
+    height: 48,
+    paddingHorizontal: 15,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  addButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
   backBtn: {
     height: 48,
     paddingHorizontal: 15,
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
+    alignSelf: 'center',
   },
   backBtnText: {
     fontSize: 16,

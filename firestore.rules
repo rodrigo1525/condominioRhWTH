@@ -37,5 +37,14 @@ service cloud.firestore {
       allow read: if request.auth != null;
       allow create, update, delete: if isAdmin();
     }
+
+    // Pagos registrados por el administrador
+    match /pagos/{pagoId} {
+      allow read: if request.auth != null
+        && (isAdmin()
+            || (resource.data.houseId != null
+                && get(/databases/$(database)/documents/houses/$(resource.data.houseId)).data.userId == request.auth.uid));
+      allow create, update, delete: if isAdmin();
+    }
   }
 }

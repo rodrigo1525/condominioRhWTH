@@ -322,6 +322,16 @@ export default function ReadingDetailScreen() {
 
         <View style={styles.actions}>
           <GesturePressable
+            style={[styles.secondaryButton, { borderColor: tintColor }]}
+            onPress={() =>
+              router.push(`/(admin)/registrar-pago?readingId=${readingId}` as const)
+            }
+          >
+            <ThemedText style={[styles.secondaryButtonText, { color: tintColor }]}>
+              Registrar pago
+            </ThemedText>
+          </GesturePressable>
+          <GesturePressable
             style={[styles.primaryButton, { backgroundColor: tintColor }]}
             onPress={() => router.push(`/(admin)/reading-edit?id=${readingId}` as const)}
           >

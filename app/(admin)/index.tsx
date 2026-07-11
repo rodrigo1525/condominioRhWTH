@@ -35,21 +35,9 @@ export default function AdminHomeScreen() {
       </ThemedText>
       <GesturePressable
         style={[styles.menuButton, { borderColor: tintColor }]}
-        onPress={() => router.push('/(admin)/create-user')}
-      >
-        <ThemedText style={[styles.menuButtonText, { color: tintColor }]}>Crear usuario</ThemedText>
-      </GesturePressable>
-      <GesturePressable
-        style={[styles.menuButton, { borderColor: tintColor }]}
         onPress={() => router.push('/(admin)/users')}
       >
-        <ThemedText style={[styles.menuButtonText, { color: tintColor }]}>Listado de usuarios</ThemedText>
-      </GesturePressable>
-      <GesturePressable
-        style={[styles.menuButton, { borderColor: tintColor }]}
-        onPress={() => router.push('/(admin)/houses')}
-      >
-        <ThemedText style={[styles.menuButtonText, { color: tintColor }]}>Gestionar casas</ThemedText>
+        <ThemedText style={[styles.menuButtonText, { color: tintColor }]}>Gestionar Usuarios</ThemedText>
       </GesturePressable>
       <GesturePressable
         style={[styles.menuButton, { borderColor: tintColor }]}
@@ -59,9 +47,21 @@ export default function AdminHomeScreen() {
       </GesturePressable>
       <GesturePressable
         style={[styles.menuButton, { borderColor: tintColor }]}
+        onPress={() => router.push('/(admin)/registrar-pago' as Href)}
+      >
+        <ThemedText style={[styles.menuButtonText, { color: tintColor }]}>Registrar pago</ThemedText>
+      </GesturePressable>
+      <GesturePressable
+        style={[styles.menuButton, { borderColor: tintColor }]}
+        onPress={() => router.push('/(admin)/houses')}
+      >
+        <ThemedText style={[styles.menuButtonText, { color: tintColor }]}>Gestionar casas</ThemedText>
+      </GesturePressable>
+      <GesturePressable
+        style={[styles.menuButton, { borderColor: tintColor }]}
         onPress={() => router.push('/(admin)/historico')}
       >
-        <ThemedText style={[styles.menuButtonText, { color: tintColor }]}>Histórico</ThemedText>
+        <ThemedText style={[styles.menuButtonText, { color: tintColor }]}>Centro de reporteria</ThemedText>
       </GesturePressable>
       <GesturePressable
         style={[styles.menuButton, { borderColor: tintColor }]}

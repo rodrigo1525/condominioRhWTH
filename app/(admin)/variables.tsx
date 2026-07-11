@@ -19,6 +19,7 @@ import { ThemedView } from '@/components/themed-view';
 import { GesturePressable } from '@/components/ui/gesture-pressable';
 import { Colors } from '@/constants/theme';
 import { db } from '@/lib/firebase';
+import { formatMoneyInput, roundMoney } from '@/lib/money-utils';
 
 const VARIABLES_DOC_PATH = ['variables', 'config'] as const;
 
@@ -29,11 +30,22 @@ function parseDecimal(value: string): number | null {
   return Number.isFinite(num) ? num : null;
 }
 
+function parseDay(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const num = parseInt(trimmed, 10);
+  if (!Number.isFinite(num) || num <= 0 || num > 30) return null;
+  return num;
+}
+
 export default function VariablesScreen() {
   const insets = useSafeAreaInsets();
   const [cuotaMantenimiento, setCuotaMantenimiento] = useState('');
   const [precioM3, setPrecioM3] = useState('');
+  const [precioMora, setPrecioMora] = useState('');
   const [moneda, setMoneda] = useState('');
+  const [diaCorte, setDiaCorte] = useState('');
+  const [diaCorteAdicional, setDiaCorteAdicional] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,13 +61,22 @@ export default function VariablesScreen() {
       if (snap.exists()) {
         const data = snap.data();
         if (typeof data.cuotaMantenimiento === 'number') {
-          setCuotaMantenimiento(String(data.cuotaMantenimiento));
+          setCuotaMantenimiento(formatMoneyInput(data.cuotaMantenimiento));
         }
         if (typeof data.precioM3 === 'number') {
-          setPrecioM3(String(data.precioM3));
+          setPrecioM3(formatMoneyInput(data.precioM3));
+        }
+        if (typeof data.precioMora === 'number') {
+          setPrecioMora(formatMoneyInput(data.precioMora));
         }
         if (typeof data.moneda === 'string') {
           setMoneda(data.moneda);
+        }
+        if (typeof data.diaCorte === 'number') {
+          setDiaCorte(String(data.diaCorte));
+        }
+        if (typeof data.diaCorteAdicional === 'number') {
+          setDiaCorteAdicional(String(data.diaCorteAdicional));
         }
       }
     } catch {
@@ -72,6 +93,9 @@ export default function VariablesScreen() {
   const handleSave = async () => {
     const cuotaNum = parseDecimal(cuotaMantenimiento);
     const precioNum = parseDecimal(precioM3);
+    const precioMoraNum = parseDecimal(precioMora);
+    const diaCorteNum = parseDay(diaCorte);
+    const diaCorteAdicionalNum = parseDay(diaCorteAdicional);
     const trimmedMoneda = moneda.trim();
 
     if (cuotaNum === null || cuotaNum < 0) {
@@ -82,8 +106,20 @@ export default function VariablesScreen() {
       setError('El precio por M³ debe ser un número decimal válido (≥ 0).');
       return;
     }
+    if (precioMoraNum === null || precioMoraNum < 0) {
+      setError('El precio mora debe ser un número decimal válido (≥ 0).');
+      return;
+    }
     if (!trimmedMoneda) {
       setError('La moneda es obligatoria (ej. $, Q, USD).');
+      return;
+    }
+    if (diaCorteNum === null) {
+      setError('El día corte debe ser un número entero mayor que 0 y menor o igual a 30.');
+      return;
+    }
+    if (diaCorteAdicionalNum === null) {
+      setError('El día corte adicional debe ser un número entero mayor que 0 y menor o igual a 30.');
       return;
     }
 
@@ -93,9 +129,12 @@ export default function VariablesScreen() {
       await setDoc(
         doc(db, ...VARIABLES_DOC_PATH),
         {
-          cuotaMantenimiento: cuotaNum,
-          precioM3: precioNum,
+          cuotaMantenimiento: roundMoney(cuotaNum),
+          precioM3: roundMoney(precioNum),
+          precioMora: roundMoney(precioMoraNum),
           moneda: trimmedMoneda,
+          diaCorte: diaCorteNum,
+          diaCorteAdicional: diaCorteAdicionalNum,
         },
         { merge: true }
       );
@@ -169,6 +208,20 @@ export default function VariablesScreen() {
               editable={!saving}
             />
 
+            <ThemedText style={styles.label}>Precio mora</ThemedText>
+            <TextInput
+              style={[
+                styles.input,
+                { backgroundColor: isDark ? '#2a2a2a' : '#f0f0f0', color: isDark ? '#fff' : '#111' },
+              ]}
+              placeholder="Ej: 25.00"
+              placeholderTextColor={isDark ? '#888' : '#666'}
+              value={precioMora}
+              onChangeText={setPrecioMora}
+              keyboardType="decimal-pad"
+              editable={!saving}
+            />
+
             <ThemedText style={styles.label}>Moneda</ThemedText>
             <TextInput
               style={[
@@ -181,6 +234,36 @@ export default function VariablesScreen() {
               onChangeText={setMoneda}
               editable={!saving}
               maxLength={10}
+            />
+
+            <ThemedText style={styles.label}>Día corte</ThemedText>
+            <TextInput
+              style={[
+                styles.input,
+                { backgroundColor: isDark ? '#2a2a2a' : '#f0f0f0', color: isDark ? '#fff' : '#111' },
+              ]}
+              placeholder="Ej: 15"
+              placeholderTextColor={isDark ? '#888' : '#666'}
+              value={diaCorte}
+              onChangeText={setDiaCorte}
+              keyboardType="number-pad"
+              editable={!saving}
+              maxLength={2}
+            />
+
+            <ThemedText style={styles.label}>Día corte adicional</ThemedText>
+            <TextInput
+              style={[
+                styles.input,
+                { backgroundColor: isDark ? '#2a2a2a' : '#f0f0f0', color: isDark ? '#fff' : '#111' },
+              ]}
+              placeholder="Ej: 15"
+              placeholderTextColor={isDark ? '#888' : '#666'}
+              value={diaCorteAdicional}
+              onChangeText={setDiaCorteAdicional}
+              keyboardType="number-pad"
+              editable={!saving}
+              maxLength={2}
             />
 
             <GesturePressable

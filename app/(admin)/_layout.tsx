@@ -27,6 +27,9 @@ export default function AdminLayout() {
       <Stack.Screen name="index" options={{ title: 'Administrador' }} />
       <Stack.Screen name="historico" options={{ title: 'Histórico' }} />
       <Stack.Screen name="variables" options={{ title: 'Variables' }} />
+      <Stack.Screen name="registrar-pago" options={{ title: 'Registrar pago' }} />
+      <Stack.Screen name="house-payments" options={{ title: 'Pagos' }} />
+      <Stack.Screen name="pago-edit" options={{ title: 'Editar pago' }} />
       <Stack.Screen name="house-readings" options={{ title: 'Lecturas' }} />
       <Stack.Screen name="reading-edit" options={{ title: 'Editar lectura' }} />
       <Stack.Screen name="reading-detail" options={{ title: 'Detalle lectura' }} />
