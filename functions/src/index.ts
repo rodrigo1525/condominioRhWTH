@@ -628,7 +628,7 @@ export const sendHistoricoByEmail = onCall(
     }
 
     const mesStr = mes != null && String(mes).trim() !== '' ? String(mes).trim() : '—';
-    // Preferir el HTML de la app (mismo que "Ver informe"); fallback al generador del servidor.
+    // Preferir el HTML generado en la app; fallback al generador del servidor.
     let html =
       typeof htmlFromClient === 'string' && htmlFromClient.trim().length > 0
         ? htmlFromClient.trim()
