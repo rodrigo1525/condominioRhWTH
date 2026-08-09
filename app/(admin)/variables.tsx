@@ -1,9 +1,12 @@
 import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -18,10 +21,11 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { GesturePressable } from '@/components/ui/gesture-pressable';
 import { Colors } from '@/constants/theme';
-import { db } from '@/lib/firebase';
+import { db, storage } from '@/lib/firebase';
 import { formatMoneyInput, roundMoney } from '@/lib/money-utils';
 
 const VARIABLES_DOC_PATH = ['variables', 'config'] as const;
+const REPORTE_IMAGEN_STORAGE_PATH = 'variables/reporte-imagen.jpg';
 
 function parseDecimal(value: string): number | null {
   const trimmed = value.trim().replace(',', '.');
@@ -48,6 +52,11 @@ export default function VariablesScreen() {
   const [diaCorteAdicional, setDiaCorteAdicional] = useState('');
   const [nombreCondominio, setNombreCondominio] = useState('');
   const [direccion, setDireccion] = useState('');
+  /** URL remota guardada en Firestore (vacío = sin imagen). */
+  const [imagenUrl, setImagenUrl] = useState('');
+  /** URI local pendiente de subir al Guardar. */
+  const [imagenLocalUri, setImagenLocalUri] = useState<string | null>(null);
+  const [removeImagen, setRemoveImagen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -86,6 +95,13 @@ export default function VariablesScreen() {
         if (typeof data.direccion === 'string') {
           setDireccion(data.direccion);
         }
+        if (typeof data.imagen === 'string') {
+          setImagenUrl(data.imagen);
+        } else {
+          setImagenUrl('');
+        }
+        setImagenLocalUri(null);
+        setRemoveImagen(false);
       }
     } catch {
       setError('Error al cargar las variables.');
@@ -97,6 +113,29 @@ export default function VariablesScreen() {
   useEffect(() => {
     loadVariables();
   }, [loadVariables]);
+
+  const pickImagen = useCallback(async () => {
+    setError(null);
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      setError('Se necesita permiso para acceder a fotos.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      quality: 0.85,
+    });
+    if (!result.canceled && result.assets[0]?.uri) {
+      setImagenLocalUri(result.assets[0].uri);
+      setRemoveImagen(false);
+    }
+  }, []);
+
+  const clearImagen = useCallback(() => {
+    setImagenLocalUri(null);
+    setRemoveImagen(true);
+  }, []);
 
   const handleSave = async () => {
     const cuotaNum = parseDecimal(cuotaMantenimiento);
@@ -144,11 +183,23 @@ export default function VariablesScreen() {
     setError(null);
     setSaving(true);
     try {
+      let nextImagen = imagenUrl.trim();
+      if (removeImagen && !imagenLocalUri) {
+        nextImagen = '';
+      } else if (imagenLocalUri) {
+        const response = await fetch(imagenLocalUri);
+        const blob = await response.blob();
+        const storageRef = ref(storage, REPORTE_IMAGEN_STORAGE_PATH);
+        await uploadBytes(storageRef, blob, { contentType: blob.type || 'image/jpeg' });
+        nextImagen = await getDownloadURL(storageRef);
+      }
+
       await setDoc(
         doc(db, ...VARIABLES_DOC_PATH),
         {
           nombreCondominio: trimmedNombre,
           direccion: trimmedDireccion,
+          imagen: nextImagen,
           cuotaMantenimiento: roundMoney(cuotaNum),
           precioM3: roundMoney(precioNum),
           precioMora: roundMoney(precioMoraNum),
@@ -158,6 +209,9 @@ export default function VariablesScreen() {
         },
         { merge: true }
       );
+      setImagenUrl(nextImagen);
+      setImagenLocalUri(null);
+      setRemoveImagen(false);
       Alert.alert('Éxito', 'Variables guardadas correctamente.');
     } catch {
       setError('Error al guardar. Intenta de nuevo.');
@@ -165,6 +219,8 @@ export default function VariablesScreen() {
       setSaving(false);
     }
   };
+
+  const previewUri = imagenLocalUri ?? (removeImagen ? null : imagenUrl.trim() || null);
 
   if (loading) {
     return (
@@ -227,6 +283,40 @@ export default function VariablesScreen() {
               editable={!saving}
               multiline
             />
+
+            <ThemedText style={styles.label}>Imagen (encabezado del reporte)</ThemedText>
+            <ThemedText style={styles.hint}>
+              Opcional. Se sube al guardar. En el reporte queda a la izquierda, con el texto centrado.
+            </ThemedText>
+            {previewUri ? (
+              <Image source={{ uri: previewUri }} style={styles.imagenPreview} resizeMode="contain" />
+            ) : (
+              <View style={[styles.imagenPlaceholder, { backgroundColor: isDark ? '#2a2a2a' : '#f0f0f0' }]}>
+                <ThemedText style={styles.imagenPlaceholderText}>Sin imagen</ThemedText>
+              </View>
+            )}
+            <View style={styles.imagenActions}>
+              <GesturePressable
+                style={[styles.secondaryButton, { borderColor: tintColor }]}
+                onPress={pickImagen}
+                disabled={saving}
+              >
+                <ThemedText style={[styles.secondaryButtonText, { color: tintColor }]}>
+                  {previewUri ? 'Cambiar imagen' : 'Elegir imagen'}
+                </ThemedText>
+              </GesturePressable>
+              {previewUri ? (
+                <GesturePressable
+                  style={[styles.secondaryButton, { borderColor: '#dc2626' }]}
+                  onPress={clearImagen}
+                  disabled={saving}
+                >
+                  <ThemedText style={[styles.secondaryButtonText, { color: '#dc2626' }]}>
+                    Quitar
+                  </ThemedText>
+                </GesturePressable>
+              ) : null}
+            </View>
 
             <ThemedText style={styles.label}>Cuota mantenimiento</ThemedText>
             <TextInput
@@ -376,6 +466,44 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     marginBottom: 8,
+  },
+  hint: {
+    fontSize: 12,
+    opacity: 0.7,
+    marginBottom: 10,
+    marginTop: -4,
+  },
+  imagenPreview: {
+    width: '100%',
+    height: 100,
+    marginBottom: 12,
+  },
+  imagenPlaceholder: {
+    height: 80,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  imagenPlaceholderText: {
+    opacity: 0.6,
+    fontSize: 14,
+  },
+  imagenActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 16,
+  },
+  secondaryButton: {
+    borderWidth: 1.5,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  secondaryButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   input: {
     height: 48,

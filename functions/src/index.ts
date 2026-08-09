@@ -414,6 +414,7 @@ const MESES_ES_UPPER = [
 interface LetterheadInfo {
   nombreCondominio: string;
   direccion: string;
+  imagen?: string;
 }
 
 async function loadLetterheadFromVariables(): Promise<LetterheadInfo> {
@@ -427,10 +428,12 @@ async function loadLetterheadFromVariables(): Promise<LetterheadInfo> {
     typeof data.direccion === 'string' && data.direccion.trim()
       ? data.direccion.trim()
       : '—';
-  return { nombreCondominio: nombre, direccion };
+  const imagen =
+    typeof data.imagen === 'string' && data.imagen.trim() ? data.imagen.trim() : '';
+  return { nombreCondominio: nombre, direccion, imagen };
 }
 
-/** Encabezado del estado de cuenta (nombre/dirección desde variables). */
+/** Encabezado del estado de cuenta (nombre/dirección/imagen desde variables). */
 function buildReporteLetterheadHtml(
   period: string | undefined,
   letterhead: LetterheadInfo
@@ -451,12 +454,31 @@ function buildReporteLetterheadHtml(
 
   const lineStyle =
     'margin: 0 0 4px 0; text-align: center; color: #000000; font-family: sans-serif;';
-  return `
-      <div style="margin: 0 0 16px 0; text-align: center;">
+  const imagen = (letterhead.imagen ?? '').trim();
+  const textBlock = `
         <p style="${lineStyle} font-size: 16px; font-weight: bold;">${escapeHtml(letterhead.nombreCondominio)}</p>
         <p style="${lineStyle} font-size: 13px;">${escapeHtml(letterhead.direccion)}</p>
         <p style="${lineStyle} font-size: 14px; font-weight: bold;">ESTADO DE CUENTA ${escapeHtml(mesAnio)}</p>
-        <p style="${lineStyle} font-size: 12px;">${escapeHtml(cuotasLine)}</p>
+        <p style="${lineStyle} font-size: 12px; margin-bottom: 0;">${escapeHtml(cuotasLine)}</p>`;
+
+  if (imagen) {
+    return `
+      <table cellpadding="0" cellspacing="0" style="width: 100%; max-width: 1200px; margin: 0 0 16px 0; border-collapse: collapse;">
+        <tr>
+          <td style="width: 120px; vertical-align: middle; text-align: left;">
+            <img src="${escapeHtml(imagen)}" alt="" style="display: block; max-height: 80px; max-width: 110px; width: auto; height: auto;" />
+          </td>
+          <td style="vertical-align: middle; text-align: center;">
+            ${textBlock}
+          </td>
+          <td style="width: 120px; vertical-align: middle;"></td>
+        </tr>
+      </table>`;
+  }
+
+  return `
+      <div style="margin: 0 0 16px 0; text-align: center;">
+        ${textBlock}
       </div>`;
 }
 

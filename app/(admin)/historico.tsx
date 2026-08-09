@@ -89,6 +89,7 @@ interface VariablesConfig {
   cuotaMantenimiento: number;
   nombreCondominio: string;
   direccion: string;
+  imagen: string;
 }
 
 function round2(value: number): number {
@@ -374,6 +375,7 @@ export default function HistoricoScreen() {
           nombreCondominio:
             typeof data.nombreCondominio === 'string' ? data.nombreCondominio : '',
           direccion: typeof data.direccion === 'string' ? data.direccion : '',
+          imagen: typeof data.imagen === 'string' ? data.imagen : '',
         });
       } else {
         setVariables({
@@ -381,6 +383,7 @@ export default function HistoricoScreen() {
           cuotaMantenimiento: 0,
           nombreCondominio: '',
           direccion: '',
+          imagen: '',
         });
       }
     } catch {
@@ -389,6 +392,7 @@ export default function HistoricoScreen() {
         cuotaMantenimiento: 0,
         nombreCondominio: '',
         direccion: '',
+        imagen: '',
       });
     } finally {
       setLoadingVariables(false);
@@ -545,6 +549,7 @@ export default function HistoricoScreen() {
       const html = buildReporteDocumentHtml(rows, period, {
         nombreCondominio: variables?.nombreCondominio ?? '',
         direccion: variables?.direccion ?? '',
+        imagen: variables?.imagen ?? '',
       });
 
       const sendFn = httpsCallable<
@@ -579,6 +584,7 @@ export default function HistoricoScreen() {
     resolveReportList,
     variables?.nombreCondominio,
     variables?.direccion,
+    variables?.imagen,
   ]);
 
   const previewHtml = useMemo(() => {
@@ -586,12 +592,14 @@ export default function HistoricoScreen() {
     return buildReporteDocumentHtml(previewRows, period, {
       nombreCondominio: variables?.nombreCondominio ?? '',
       direccion: variables?.direccion ?? '',
+      imagen: variables?.imagen ?? '',
     });
   }, [
     previewRows,
     period,
     variables?.nombreCondominio,
     variables?.direccion,
+    variables?.imagen,
   ]);
 
   const renderResult = ({ item }: { item: ReadingResult }) => {

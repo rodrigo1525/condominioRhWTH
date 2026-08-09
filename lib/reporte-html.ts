@@ -21,6 +21,8 @@ export type ReporteHtmlRow = {
 export type ReporteLetterhead = {
   nombreCondominio: string;
   direccion: string;
+  /** URL pública (Storage) de la imagen del encabezado; opcional. */
+  imagen?: string | null;
 };
 
 const MESES_ES_UPPER = [
@@ -112,15 +114,35 @@ function buildLetterheadHtml(period: string, letterhead: ReporteLetterhead): str
 
   const nombre = (letterhead.nombreCondominio ?? '').trim() || 'CONDOMINIO';
   const direccion = (letterhead.direccion ?? '').trim() || '—';
+  const imagen = (letterhead.imagen ?? '').trim();
   const lineStyle =
     'margin: 0 0 4px 0; text-align: center; color: #000000; font-family: sans-serif;';
-
-  return `
-      <div style="margin: 0 0 16px 0; text-align: center;">
+  const textBlock = `
         <p style="${lineStyle} font-size: 16px; font-weight: bold;">${escapeHtml(nombre)}</p>
         <p style="${lineStyle} font-size: 13px;">${escapeHtml(direccion)}</p>
         <p style="${lineStyle} font-size: 14px; font-weight: bold;">ESTADO DE CUENTA ${escapeHtml(mesAnio)}</p>
-        <p style="${lineStyle} font-size: 12px;">${escapeHtml(cuotasLine)}</p>
+        <p style="${lineStyle} font-size: 12px; margin-bottom: 0;">${escapeHtml(cuotasLine)}</p>`;
+
+  // Misma línea: imagen a la izquierda, encabezado centrado (columna derecha
+  // del mismo ancho que la izquierda para no desplazar el centro).
+  if (imagen) {
+    return `
+      <table cellpadding="0" cellspacing="0" style="width: 100%; max-width: 1200px; margin: 0 0 16px 0; border-collapse: collapse;">
+        <tr>
+          <td style="width: 120px; vertical-align: middle; text-align: left;">
+            <img src="${escapeHtml(imagen)}" alt="" style="display: block; max-height: 80px; max-width: 110px; width: auto; height: auto;" />
+          </td>
+          <td style="vertical-align: middle; text-align: center;">
+            ${textBlock}
+          </td>
+          <td style="width: 120px; vertical-align: middle;"></td>
+        </tr>
+      </table>`;
+  }
+
+  return `
+      <div style="margin: 0 0 16px 0; text-align: center;">
+        ${textBlock}
       </div>`;
 }
 
