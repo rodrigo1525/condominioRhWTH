@@ -282,7 +282,7 @@ export const sendReadingByEmail = onCall(
     const tableHtml = `
       <table border="1" cellpadding="10" cellspacing="0" style="border-collapse: collapse; width: 100%; max-width: 600px;">
         <thead>
-          <tr style="background: #2563eb; color: #fff;">
+          <tr>
             <th>CASA NO.</th>
             <th>MES</th>
             <th>LECTURA MES ANTERIOR</th>
@@ -396,6 +396,70 @@ function formatReportTotal(value: number): string {
   return roundReport(value).toFixed(2);
 }
 
+const MESES_ES_UPPER = [
+  'ENERO',
+  'FEBRERO',
+  'MARZO',
+  'ABRIL',
+  'MAYO',
+  'JUNIO',
+  'JULIO',
+  'AGOSTO',
+  'SEPTIEMBRE',
+  'OCTUBRE',
+  'NOVIEMBRE',
+  'DICIEMBRE',
+] as const;
+
+interface LetterheadInfo {
+  nombreCondominio: string;
+  direccion: string;
+}
+
+async function loadLetterheadFromVariables(): Promise<LetterheadInfo> {
+  const snap = await db.doc('variables/config').get();
+  const data = snap.data() ?? {};
+  const nombre =
+    typeof data.nombreCondominio === 'string' && data.nombreCondominio.trim()
+      ? data.nombreCondominio.trim()
+      : 'CONDOMINIO';
+  const direccion =
+    typeof data.direccion === 'string' && data.direccion.trim()
+      ? data.direccion.trim()
+      : '—';
+  return { nombreCondominio: nombre, direccion };
+}
+
+/** Encabezado del estado de cuenta (nombre/dirección desde variables). */
+function buildReporteLetterheadHtml(
+  period: string | undefined,
+  letterhead: LetterheadInfo
+): string {
+  let mesAnio = '—';
+  let cuotasLine = 'CUOTAS ADEUDADAS POR SERVICIOS RECIBIDOS AL 30 DE JUNIO 2026';
+
+  if (period && /^\d{4}-\d{2}$/.test(period)) {
+    const year = parseInt(period.slice(0, 4), 10);
+    const month = parseInt(period.slice(5, 7), 10);
+    if (Number.isFinite(year) && month >= 1 && month <= 12) {
+      const mesName = MESES_ES_UPPER[month - 1];
+      mesAnio = `${mesName} ${year}`;
+      const lastDay = new Date(year, month, 0).getDate();
+      cuotasLine = `CUOTAS ADEUDADAS POR SERVICIOS RECIBIDOS AL ${lastDay} DE ${mesName} ${year}`;
+    }
+  }
+
+  const lineStyle =
+    'margin: 0 0 4px 0; text-align: center; color: #000000; font-family: sans-serif;';
+  return `
+      <div style="margin: 0 0 16px 0; text-align: center;">
+        <p style="${lineStyle} font-size: 16px; font-weight: bold;">${escapeHtml(letterhead.nombreCondominio)}</p>
+        <p style="${lineStyle} font-size: 13px;">${escapeHtml(letterhead.direccion)}</p>
+        <p style="${lineStyle} font-size: 14px; font-weight: bold;">ESTADO DE CUENTA ${escapeHtml(mesAnio)}</p>
+        <p style="${lineStyle} font-size: 12px;">${escapeHtml(cuotasLine)}</p>
+      </div>`;
+}
+
 function sumReportColumn(
   rows: HistoricoEmailRow[],
   getter: (row: HistoricoEmailRow) => string | number | null | undefined
@@ -412,7 +476,11 @@ function sumReportColumn(
   return hasAny ? formatReportTotal(sum) : '';
 }
 
-function buildReporteTableHtml(rows: HistoricoEmailRow[]): string {
+function buildReporteTableHtml(
+  rows: HistoricoEmailRow[],
+  period: string | undefined,
+  letterhead: LetterheadInfo
+): string {
   const bodyRows = rows
     .map((row) => {
       const casaStr = cellValue(row.casaNo, '—');
@@ -429,54 +497,58 @@ function buildReporteTableHtml(rows: HistoricoEmailRow[]): string {
       const observacionesStr = cellValue(row.observaciones, '');
       return `
           <tr>
-            <td>${escapeHtml(casaStr)}</td>
-            <td>${escapeHtml(saldoStr)}</td>
-            <td>${escapeHtml(atrasoStr)}</td>
-            <td>${escapeHtml(otroStr)}</td>
-            <td>${escapeHtml(ajusteStr)}</td>
-            <td>${escapeHtml(cuotaMantStr)}</td>
-            <td>${escapeHtml(prevStr)}</td>
-            <td>${escapeHtml(currStr)}</td>
-            <td>${escapeHtml(consStr)}</td>
-            <td>${escapeHtml(cuotaAguaStr)}</td>
-            <td>${escapeHtml(totalStr)}</td>
-            <td>${escapeHtml(observacionesStr)}</td>
+            <td style="border: 1px solid #000000;">${escapeHtml(casaStr)}</td>
+            <td style="border: 1px solid #000000;">${escapeHtml(saldoStr)}</td>
+            <td style="border: 1px solid #000000;">${escapeHtml(atrasoStr)}</td>
+            <td style="border: 1px solid #000000;">${escapeHtml(otroStr)}</td>
+            <td style="border: 1px solid #000000;">${escapeHtml(ajusteStr)}</td>
+            <td style="border: 1px solid #000000;">${escapeHtml(cuotaMantStr)}</td>
+            <td style="border: 1px solid #000000;">${escapeHtml(prevStr)}</td>
+            <td style="border: 1px solid #000000;">${escapeHtml(currStr)}</td>
+            <td style="border: 1px solid #000000;">${escapeHtml(consStr)}</td>
+            <td style="border: 1px solid #000000;">${escapeHtml(cuotaAguaStr)}</td>
+            <td style="border: 1px solid #000000;">${escapeHtml(totalStr)}</td>
+            <td style="border: 1px solid #000000;">${escapeHtml(observacionesStr)}</td>
           </tr>`;
     })
     .join('');
 
   const totalsRow = `
           <tr style="background: #e8eef9; font-weight: bold;">
-            <td>${escapeHtml('TOTAL')}</td>
-            <td>${escapeHtml(sumReportColumn(rows, (r) => r.saldoAnterior))}</td>
-            <td>${escapeHtml(sumReportColumn(rows, (r) => r.cuotaAtraso))}</td>
-            <td>${escapeHtml(sumReportColumn(rows, (r) => r.otro))}</td>
-            <td>${escapeHtml(sumReportColumn(rows, (r) => r.ajusteJD))}</td>
-            <td>${escapeHtml(sumReportColumn(rows, (r) => r.cuotaMantenimiento))}</td>
-            <td>${escapeHtml(sumReportColumn(rows, (r) => r.lecturaAnterior))}</td>
-            <td>${escapeHtml(sumReportColumn(rows, (r) => r.lecturaRegistrada))}</td>
-            <td>${escapeHtml(sumReportColumn(rows, (r) => r.consumoAguaM3))}</td>
-            <td>${escapeHtml(sumReportColumn(rows, (r) => r.cuotaAPagarPorConsumoAgua))}</td>
-            <td>${escapeHtml(sumReportColumn(rows, (r) => r.saldoTotalAPagar))}</td>
-            <td></td>
+            <td style="border: 1px solid #000000;">${escapeHtml('TOTAL')}</td>
+            <td style="border: 1px solid #000000;">${escapeHtml(sumReportColumn(rows, (r) => r.saldoAnterior))}</td>
+            <td style="border: 1px solid #000000;">${escapeHtml(sumReportColumn(rows, (r) => r.cuotaAtraso))}</td>
+            <td style="border: 1px solid #000000;">${escapeHtml(sumReportColumn(rows, (r) => r.otro))}</td>
+            <td style="border: 1px solid #000000;">${escapeHtml(sumReportColumn(rows, (r) => r.ajusteJD))}</td>
+            <td style="border: 1px solid #000000;">${escapeHtml(sumReportColumn(rows, (r) => r.cuotaMantenimiento))}</td>
+            <td style="border: 1px solid #000000;">${escapeHtml(sumReportColumn(rows, (r) => r.lecturaAnterior))}</td>
+            <td style="border: 1px solid #000000;">${escapeHtml(sumReportColumn(rows, (r) => r.lecturaRegistrada))}</td>
+            <td style="border: 1px solid #000000;">${escapeHtml(sumReportColumn(rows, (r) => r.consumoAguaM3))}</td>
+            <td style="border: 1px solid #000000;">${escapeHtml(sumReportColumn(rows, (r) => r.cuotaAPagarPorConsumoAgua))}</td>
+            <td style="border: 1px solid #000000;">${escapeHtml(sumReportColumn(rows, (r) => r.saldoTotalAPagar))}</td>
+            <td style="border: 1px solid #000000;"></td>
           </tr>`;
 
   return `
-      <table border="1" cellpadding="10" cellspacing="0" style="border-collapse: collapse; width: 100%; max-width: 1200px;">
+      ${buildReporteLetterheadHtml(period, letterhead)}
+      <table cellpadding="10" cellspacing="0" style="border-collapse: collapse; width: 100%; max-width: 1200px; border: 1px solid #000000;">
         <thead>
-          <tr style="background: #2563eb; color: #fff;">
-            <th>CASA NO.</th>
-            <th>SALDO ANTERIOR</th>
-            <th>CUOTA POR ATRASO EN FECHA DE PAGO</th>
-            <th>OTRO</th>
-            <th>AJUSTE JD</th>
-            <th>CUOTA DE MANTENIMIENTO</th>
-            <th>LECTURA ANTERIOR</th>
-            <th>LECTURA REGISTRADA</th>
-            <th>CONSUMO DE AGUA M3</th>
-            <th>CUOTA A PAGAR POR CONSUMO DE AGUA</th>
-            <th>SALDO TOTAL A PAGAR</th>
-            <th>OBSERVACIONES</th>
+          <tr style="background: #ffffff;">
+            <th rowspan="2" style="color: #000000; background: #ffffff; border: 2px solid #000000; text-align: center; vertical-align: middle;">CASA NO.</th>
+            <th rowspan="2" style="color: #000000; background: #ffffff; border: 2px solid #000000; text-align: center; vertical-align: middle;">SALDO ANTERIOR</th>
+            <th rowspan="2" style="color: #000000; background: #ffffff; border: 2px solid #000000; text-align: center; vertical-align: middle;">CUOTA POR ATRASO EN FECHA DE PAGO</th>
+            <th rowspan="2" style="color: #000000; background: #ffffff; border: 2px solid #000000; text-align: center; vertical-align: middle;">OTRO</th>
+            <th rowspan="2" style="color: #000000; background: #ffffff; border: 2px solid #000000; text-align: center; vertical-align: middle;">AJUSTE JD</th>
+            <th rowspan="2" style="color: #000000; background: #ffffff; border: 2px solid #000000; text-align: center; vertical-align: middle;">CUOTA DE MANTENIMIENTO</th>
+            <th colspan="4" style="color: #000000; background: #ffffff; border: 2px solid #000000; text-align: center; vertical-align: middle;">AGUA</th>
+            <th rowspan="2" style="color: #000000; background: #ffffff; border: 2px solid #000000; text-align: center; vertical-align: middle;">SALDO TOTAL A PAGAR</th>
+            <th rowspan="2" style="color: #000000; background: #ffffff; border: 2px solid #000000; text-align: center; vertical-align: middle;">OBSERVACIONES</th>
+          </tr>
+          <tr style="background: #ffffff;">
+            <th style="color: #000000; background: #ffffff; border: 2px solid #000000; text-align: center; vertical-align: middle;">LECTURA ANTERIOR</th>
+            <th style="color: #000000; background: #ffffff; border: 2px solid #000000; text-align: center; vertical-align: middle;">LECTURA REGISTRADA</th>
+            <th style="color: #000000; background: #ffffff; border: 2px solid #000000; text-align: center; vertical-align: middle;">CONSUMO DE AGUA M3</th>
+            <th style="color: #000000; background: #ffffff; border: 2px solid #000000; text-align: center; vertical-align: middle;">CUOTA A PAGAR POR CONSUMO DE AGUA</th>
           </tr>
         </thead>
         <tbody>${bodyRows}${totalsRow}
@@ -484,8 +556,12 @@ function buildReporteTableHtml(rows: HistoricoEmailRow[]): string {
       </table>`;
 }
 
-function buildHistoricoTableHtml(rows: HistoricoEmailRow[]): string {
-  return buildReporteTableHtml(rows);
+function buildHistoricoTableHtml(
+  rows: HistoricoEmailRow[],
+  period: string | undefined,
+  letterhead: LetterheadInfo
+): string {
+  return buildReporteTableHtml(rows, period, letterhead);
 }
 
 /**
@@ -500,10 +576,12 @@ export const sendHistoricoByEmail = onCall(
     }
     await assertAdmin(request.auth.uid);
 
-    const { mes, rows, reportType } = request.data as {
+    const { mes, period, rows, html: htmlFromClient } = request.data as {
       mes?: string;
+      period?: string;
       rows?: HistoricoEmailRow[];
       reportType?: 'preliminar' | 'final';
+      html?: string;
     };
 
     if (!rows || !Array.isArray(rows) || rows.length === 0) {
@@ -528,16 +606,23 @@ export const sendHistoricoByEmail = onCall(
     }
 
     const mesStr = mes != null && String(mes).trim() !== '' ? String(mes).trim() : '—';
-    const tipoReporte = reportType === 'preliminar' ? 'preliminar' : 'final';
-    const tableHtml = buildHistoricoTableHtml(rows);
-    const titulo =
-      tipoReporte === 'preliminar' ? 'Reporte preliminar de lecturas' : 'Reporte final de lecturas';
-    const html = `
+    // Preferir el HTML de la app (mismo que "Ver informe"); fallback al generador del servidor.
+    let html =
+      typeof htmlFromClient === 'string' && htmlFromClient.trim().length > 0
+        ? htmlFromClient.trim()
+        : '';
+    if (!html) {
+      const periodStr =
+        period != null && /^\d{4}-\d{2}$/.test(String(period).trim())
+          ? String(period).trim()
+          : undefined;
+      const letterhead = await loadLetterheadFromVariables();
+      const tableHtml = buildHistoricoTableHtml(rows, periodStr, letterhead);
+      html = `
       <div style="font-family: sans-serif;">
-        <h2>${escapeHtml(titulo)}</h2>
-        <p>Resumen de lecturas del período <strong>${escapeHtml(mesStr)}</strong>.</p>
         ${tableHtml}
       </div>`;
+    }
 
     const transporter = nodemailer.createTransport({
       host: SMTP_HOST,

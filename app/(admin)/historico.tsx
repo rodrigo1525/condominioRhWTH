@@ -16,6 +16,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { WebView } from 'react-native-webview';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -24,6 +25,7 @@ import { Colors } from '@/constants/theme';
 import { db, functions } from '@/lib/firebase';
 import { parseMoneyField } from '@/lib/money-utils';
 import { getPreviousPeriod } from '@/lib/period-utils';
+import { buildReporteDocumentHtml } from '@/lib/reporte-html';
 
 const VARIABLES_DOC_PATH = ['variables', 'config'] as const;
 
@@ -85,6 +87,8 @@ interface ReadingResult {
 interface VariablesConfig {
   precioM3: number;
   cuotaMantenimiento: number;
+  nombreCondominio: string;
+  direccion: string;
 }
 
 function round2(value: number): number {
@@ -313,6 +317,17 @@ function getSendEmailErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : 'Error al enviar el correo.';
 }
 
+function buildReporteEmailRows(
+  list: ReadingResult[],
+  reportType: ReportType
+): ReporteEmailRow[] {
+  return list.map((reading) =>
+    reportType === 'preliminar'
+      ? buildPreliminarEmailRow(reading)
+      : buildFinalEmailRow(reading)
+  );
+}
+
 export default function HistoricoScreen() {
   const insets = useSafeAreaInsets();
   const defaults = useMemo(() => getDefaultMonthYear(), []);
@@ -325,6 +340,10 @@ export default function HistoricoScreen() {
   const [dropdownTarget, setDropdownTarget] = useState<DropdownTarget>(null);
   const [loading, setLoading] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewRows, setPreviewRows] = useState<ReporteEmailRow[]>([]);
+  const [previewPeriodLabel, setPreviewPeriodLabel] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<ReadingResult[]>([]);
   const [queriedPeriod, setQueriedPeriod] = useState<string | null>(null);
@@ -352,12 +371,25 @@ export default function HistoricoScreen() {
           precioM3: typeof data.precioM3 === 'number' ? data.precioM3 : 0,
           cuotaMantenimiento:
             typeof data.cuotaMantenimiento === 'number' ? data.cuotaMantenimiento : 0,
+          nombreCondominio:
+            typeof data.nombreCondominio === 'string' ? data.nombreCondominio : '',
+          direccion: typeof data.direccion === 'string' ? data.direccion : '',
         });
       } else {
-        setVariables({ precioM3: 0, cuotaMantenimiento: 0 });
+        setVariables({
+          precioM3: 0,
+          cuotaMantenimiento: 0,
+          nombreCondominio: '',
+          direccion: '',
+        });
       }
     } catch {
-      setVariables({ precioM3: 0, cuotaMantenimiento: 0 });
+      setVariables({
+        precioM3: 0,
+        cuotaMantenimiento: 0,
+        nombreCondominio: '',
+        direccion: '',
+      });
     } finally {
       setLoadingVariables(false);
     }
@@ -463,12 +495,42 @@ export default function HistoricoScreen() {
     }
   }, [fetchReadings, period]);
 
+  const resolveReportList = useCallback(async (): Promise<ReadingResult[] | null> => {
+    if (queriedPeriod === period && results.length > 0) {
+      return results;
+    }
+    return fetchReadings();
+  }, [fetchReadings, period, queriedPeriod, results]);
+
+  const handlePreviewReport = useCallback(async () => {
+    setLoadingPreview(true);
+    setError(null);
+    try {
+      const list = await resolveReportList();
+
+      if (!list || list.length === 0) {
+        Alert.alert('Ver informe', 'No hay lecturas registradas para este período.');
+        return;
+      }
+
+      const periodLabel = formatPeriod(period);
+      const reportLabel = reportType === 'preliminar' ? 'Reporte preliminar' : 'Reporte final';
+      setPreviewPeriodLabel(`${periodLabel} (${reportLabel})`);
+      setPreviewRows(buildReporteEmailRows(list, reportType));
+      setPreviewOpen(true);
+    } catch (err) {
+      console.error(err);
+      setError('No se pudo cargar el informe del período seleccionado.');
+    } finally {
+      setLoadingPreview(false);
+    }
+  }, [period, reportType, resolveReportList]);
+
   const handleSendEmail = useCallback(async () => {
     setSendingEmail(true);
     setError(null);
     try {
-      let list =
-        queriedPeriod === period && results.length > 0 ? results : await fetchReadings();
+      const list = await resolveReportList();
 
       if (!list || list.length === 0) {
         Alert.alert('Envío por correo', 'No hay lecturas registradas para enviar en este período.');
@@ -478,24 +540,30 @@ export default function HistoricoScreen() {
       const periodLabel = formatPeriod(period);
       const reportLabel = reportType === 'preliminar' ? 'Reporte preliminar' : 'Reporte final';
       const mesLabel = `${periodLabel} (${reportLabel})`;
+      const rows = buildReporteEmailRows(list, reportType);
+      // Mismo HTML que "Ver informe" para que el correo coincida con la vista previa.
+      const html = buildReporteDocumentHtml(rows, period, {
+        nombreCondominio: variables?.nombreCondominio ?? '',
+        direccion: variables?.direccion ?? '',
+      });
 
       const sendFn = httpsCallable<
         {
           mes: string;
+          period: string;
           reportType: ReportType;
           rows: ReporteEmailRow[];
+          html: string;
         },
         { success: boolean; message?: string }
       >(functions, 'sendHistoricoByEmail');
 
       const { data } = await sendFn({
         mes: mesLabel,
+        period,
         reportType,
-        rows: list.map((reading) =>
-          reportType === 'preliminar'
-            ? buildPreliminarEmailRow(reading)
-            : buildFinalEmailRow(reading)
-        ),
+        rows,
+        html,
       });
 
       Alert.alert('Envío por correo', data.message ?? 'Correo enviado correctamente.');
@@ -505,7 +573,26 @@ export default function HistoricoScreen() {
     } finally {
       setSendingEmail(false);
     }
-  }, [fetchReadings, period, queriedPeriod, reportType, results]);
+  }, [
+    period,
+    reportType,
+    resolveReportList,
+    variables?.nombreCondominio,
+    variables?.direccion,
+  ]);
+
+  const previewHtml = useMemo(() => {
+    if (previewRows.length === 0) return '';
+    return buildReporteDocumentHtml(previewRows, period, {
+      nombreCondominio: variables?.nombreCondominio ?? '',
+      direccion: variables?.direccion ?? '',
+    });
+  }, [
+    previewRows,
+    period,
+    variables?.nombreCondominio,
+    variables?.direccion,
+  ]);
 
   const renderResult = ({ item }: { item: ReadingResult }) => {
     const reportRow =
@@ -688,7 +775,7 @@ export default function HistoricoScreen() {
             <GesturePressable
               style={[styles.primaryButton, { backgroundColor: tintColor, opacity: loading ? 0.7 : 1 }]}
               onPress={handleSubmit}
-              disabled={loading || sendingEmail}
+              disabled={loading || sendingEmail || loadingPreview}
             >
               {loading ? (
                 <ActivityIndicator size="small" color={isDark ? '#111' : '#fff'} />
@@ -702,10 +789,27 @@ export default function HistoricoScreen() {
             <GesturePressable
               style={[
                 styles.secondaryButton,
+                { borderColor: tintColor, opacity: loadingPreview ? 0.7 : 1 },
+              ]}
+              onPress={handlePreviewReport}
+              disabled={loading || sendingEmail || loadingPreview}
+            >
+              {loadingPreview ? (
+                <ActivityIndicator size="small" color={tintColor} />
+              ) : (
+                <ThemedText style={[styles.secondaryButtonText, { color: tintColor }]}>
+                  Ver informe
+                </ThemedText>
+              )}
+            </GesturePressable>
+
+            <GesturePressable
+              style={[
+                styles.secondaryButton,
                 { borderColor: tintColor, opacity: sendingEmail ? 0.7 : 1 },
               ]}
               onPress={handleSendEmail}
-              disabled={loading || sendingEmail}
+              disabled={loading || sendingEmail || loadingPreview}
             >
               {sendingEmail ? (
                 <ActivityIndicator size="small" color={tintColor} />
@@ -773,6 +877,50 @@ export default function HistoricoScreen() {
               </ScrollView>
             </View>
           </Pressable>
+        </Modal>
+
+        <Modal
+          visible={previewOpen}
+          animationType="slide"
+          onRequestClose={() => setPreviewOpen(false)}
+        >
+          <SafeAreaView
+            style={[styles.previewSafe, { backgroundColor: '#ffffff' }]}
+            edges={['top', 'bottom']}
+          >
+            <View style={styles.previewHeader}>
+              <View style={styles.previewHeaderText}>
+                <ThemedText type="subtitle" style={styles.previewTitle}>
+                  Vista previa del correo
+                </ThemedText>
+                <ThemedText style={styles.previewSubtitle}>
+                  Período: {previewPeriodLabel}
+                </ThemedText>
+              </View>
+              <GesturePressable
+                style={[styles.previewCloseButton, { borderColor: tintColor }]}
+                onPress={() => setPreviewOpen(false)}
+              >
+                <ThemedText style={[styles.previewCloseText, { color: tintColor }]}>Cerrar</ThemedText>
+              </GesturePressable>
+            </View>
+
+            {previewHtml ? (
+              <WebView
+                originWhitelist={['*']}
+                source={{ html: previewHtml }}
+                style={styles.previewWebView}
+                scalesPageToFit
+                setSupportMultipleWindows={false}
+                startInLoadingState
+                renderLoading={() => (
+                  <View style={styles.previewWebLoading}>
+                    <ActivityIndicator size="large" color={tintColor} />
+                  </View>
+                )}
+              />
+            ) : null}
+          </SafeAreaView>
         </Modal>
       </SafeAreaView>
     </ThemedView>
@@ -956,5 +1104,52 @@ const styles = StyleSheet.create({
   },
   dropdownOptionTextActive: {
     fontWeight: '600',
+  },
+  previewSafe: {
+    flex: 1,
+  },
+  previewHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(128,128,128,0.3)',
+    backgroundColor: '#ffffff',
+  },
+  previewHeaderText: {
+    flex: 1,
+  },
+  previewTitle: {
+    marginBottom: 4,
+  },
+  previewSubtitle: {
+    opacity: 0.75,
+    fontSize: 13,
+  },
+  previewCloseButton: {
+    height: 40,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    borderWidth: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  previewCloseText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  previewWebView: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+  },
+  previewWebLoading: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
   },
 });

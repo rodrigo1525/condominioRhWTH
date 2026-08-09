@@ -46,6 +46,8 @@ export default function VariablesScreen() {
   const [moneda, setMoneda] = useState('');
   const [diaCorte, setDiaCorte] = useState('');
   const [diaCorteAdicional, setDiaCorteAdicional] = useState('');
+  const [nombreCondominio, setNombreCondominio] = useState('');
+  const [direccion, setDireccion] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -78,6 +80,12 @@ export default function VariablesScreen() {
         if (typeof data.diaCorteAdicional === 'number') {
           setDiaCorteAdicional(String(data.diaCorteAdicional));
         }
+        if (typeof data.nombreCondominio === 'string') {
+          setNombreCondominio(data.nombreCondominio);
+        }
+        if (typeof data.direccion === 'string') {
+          setDireccion(data.direccion);
+        }
       }
     } catch {
       setError('Error al cargar las variables.');
@@ -97,7 +105,17 @@ export default function VariablesScreen() {
     const diaCorteNum = parseDay(diaCorte);
     const diaCorteAdicionalNum = parseDay(diaCorteAdicional);
     const trimmedMoneda = moneda.trim();
+    const trimmedNombre = nombreCondominio.trim();
+    const trimmedDireccion = direccion.trim();
 
+    if (!trimmedNombre) {
+      setError('El nombre del condominio es obligatorio.');
+      return;
+    }
+    if (!trimmedDireccion) {
+      setError('La dirección es obligatoria.');
+      return;
+    }
     if (cuotaNum === null || cuotaNum < 0) {
       setError('La cuota de mantenimiento debe ser un número decimal válido (≥ 0).');
       return;
@@ -129,6 +147,8 @@ export default function VariablesScreen() {
       await setDoc(
         doc(db, ...VARIABLES_DOC_PATH),
         {
+          nombreCondominio: trimmedNombre,
+          direccion: trimmedDireccion,
           cuotaMantenimiento: roundMoney(cuotaNum),
           precioM3: roundMoney(precioNum),
           precioMora: roundMoney(precioMoraNum),
@@ -179,6 +199,34 @@ export default function VariablesScreen() {
                 <ThemedText style={styles.errorText}>{error}</ThemedText>
               </View>
             ) : null}
+
+            <ThemedText style={styles.label}>Nombre (condominio)</ThemedText>
+            <TextInput
+              style={[
+                styles.input,
+                { backgroundColor: isDark ? '#2a2a2a' : '#f0f0f0', color: isDark ? '#fff' : '#111' },
+              ]}
+              placeholder="Ej: CONDOMINIO SANTA AMELIA V"
+              placeholderTextColor={isDark ? '#888' : '#666'}
+              value={nombreCondominio}
+              onChangeText={setNombreCondominio}
+              editable={!saving}
+            />
+
+            <ThemedText style={styles.label}>Dirección</ThemedText>
+            <TextInput
+              style={[
+                styles.input,
+                styles.inputMultiline,
+                { backgroundColor: isDark ? '#2a2a2a' : '#f0f0f0', color: isDark ? '#fff' : '#111' },
+              ]}
+              placeholder="Ej: Boulevar al Centro Médico Militar 14-31 zona 16"
+              placeholderTextColor={isDark ? '#888' : '#666'}
+              value={direccion}
+              onChangeText={setDireccion}
+              editable={!saving}
+              multiline
+            />
 
             <ThemedText style={styles.label}>Cuota mantenimiento</ThemedText>
             <TextInput
@@ -336,18 +384,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginBottom: 16,
   },
-  errorBox: {
-    backgroundColor: 'rgba(220, 53, 69, 0.15)',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 16,
-  },
-  errorText: {
-    color: '#dc3545',
-    fontSize: 14,
+  inputMultiline: {
+    height: undefined,
+    minHeight: 72,
+    paddingVertical: 12,
+    textAlignVertical: 'top',
   },
   button: {
-    height: 48,
+    height: 52,
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
@@ -358,14 +402,20 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   backLink: {
-    alignSelf: 'center',
     marginTop: 24,
-    height: 48,
-    paddingHorizontal: 15,
-    justifyContent: 'center',
     alignItems: 'center',
   },
   backLinkText: {
     fontSize: 16,
+  },
+  errorBox: {
+    backgroundColor: 'rgba(220, 38, 38, 0.15)',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  errorText: {
+    color: '#dc2626',
+    fontSize: 14,
   },
 });
